@@ -17,6 +17,9 @@ pnpm-debug.log*
 # YouTube OAuth tokens
 youtube-tokens.json
 
+# Spotify OAuth tokens
+spotify-tokens.json
+
 # macOS-specific files
 .DS_Store
 

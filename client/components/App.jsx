@@ -13,6 +13,16 @@ export default function App() {
   const audioElement = useRef(null);
   const micTrack = useRef(null);
   const mediaPlayerRef = useRef(null);
+  const spotifyPlayerRef = useRef(null);
+  const [spotifyAuthenticated, setSpotifyAuthenticated] = useState(false);
+
+  // Check Spotify auth status on mount
+  useEffect(() => {
+    fetch("/auth/spotify/status")
+      .then((r) => r.json())
+      .then((data) => setSpotifyAuthenticated(data.authenticated))
+      .catch(() => {});
+  }, []);
 
   async function startSession() {
     // Get an ephemeral token and Azure endpoint for the Realtime API
@@ -68,12 +78,19 @@ export default function App() {
   function startTalking() {
     if (isTalking) return;
     mediaPlayerRef.current?.pause();
+    spotifyPlayerRef.current?.pause();
     if (micTrack.current) micTrack.current.enabled = true;
     setIsTalking(true);
   }
 
   // Called by ToolPanel when a YouTube video starts playing
   function onMediaPlay() {
+    if (micTrack.current) micTrack.current.enabled = false;
+    setIsTalking(false);
+  }
+
+  // Called by ToolPanel when Spotify starts playing
+  function onSpotifyPlay() {
     if (micTrack.current) micTrack.current.enabled = false;
     setIsTalking(false);
   }
@@ -153,6 +170,21 @@ export default function App() {
           event.timestamp = new Date().toLocaleTimeString();
         }
 
+        // Log conversation events for debugging
+        if (event.type === "conversation.item.input_audio_transcription.completed") {
+          console.log("[USER SPEECH]", event.transcript);
+        }
+        if (event.type === "response.audio_transcript.done") {
+          console.log("[AI RESPONSE]", event.transcript);
+        }
+        if (event.type === "response.done" && event.response?.output) {
+          event.response.output.forEach((output) => {
+            if (output.type === "function_call") {
+              console.log(`[TOOL CALL] ${output.name}(${output.arguments})`);
+            }
+          });
+        }
+
         setEvents((prev) => [event, ...prev]);
       });
 
@@ -198,6 +230,10 @@ export default function App() {
             isSessionActive={isSessionActive}
             mediaPlayerRef={mediaPlayerRef}
             onMediaPlay={onMediaPlay}
+            spotifyPlayerRef={spotifyPlayerRef}
+            spotifyAuthenticated={spotifyAuthenticated}
+            setSpotifyAuthenticated={setSpotifyAuthenticated}
+            onSpotifyPlay={onSpotifyPlay}
           />
         </section>
       </main>
