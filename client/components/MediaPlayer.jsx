@@ -1,6 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
-const MediaPlayer = forwardRef(function MediaPlayer({ videoId, title, onClose }, ref) {
+const MediaPlayer = forwardRef(function MediaPlayer(
+  { videoId, playlistId, title, onClose },
+  ref,
+) {
   const playerRef = useRef(null);
   const containerRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
@@ -11,6 +14,15 @@ const MediaPlayer = forwardRef(function MediaPlayer({ videoId, title, onClose },
     },
     play: () => {
       try { playerRef.current?.playVideo(); } catch {}
+    },
+    next: () => {
+      try { playerRef.current?.nextVideo(); } catch {}
+    },
+    previous: () => {
+      try { playerRef.current?.previousVideo(); } catch {}
+    },
+    shuffle: (on = true) => {
+      try { playerRef.current?.setShuffle(on); } catch {}
     },
   }));
 
@@ -33,26 +45,38 @@ const MediaPlayer = forwardRef(function MediaPlayer({ videoId, title, onClose },
     window.onYouTubeIframeAPIReady = () => setIsReady(true);
   }, []);
 
-  // Create or update player when videoId changes
+  // Create or update player when videoId or playlistId changes
   useEffect(() => {
-    if (!isReady || !videoId) return;
+    if (!isReady || (!videoId && !playlistId)) return;
 
+    // If player already exists, update it
     if (playerRef.current) {
-      playerRef.current.loadVideoById(videoId);
+      if (playlistId) {
+        playerRef.current.loadPlaylist({
+          listType: "playlist",
+          list: playlistId,
+          index: 0,
+          startSeconds: 0,
+        });
+      } else {
+        playerRef.current.loadVideoById(videoId);
+      }
       return;
     }
 
-    playerRef.current = new window.YT.Player(containerRef.current, {
-      height: "100%",
-      width: "100%",
-      videoId,
-      playerVars: {
-        playsinline: 1,
-        autoplay: 1,
-        rel: 0,
-      },
-    });
-  }, [isReady, videoId]);
+    // Create new player
+    const playerVars = { playsinline: 1, autoplay: 1, rel: 0 };
+    const config = { height: "100%", width: "100%", playerVars };
+
+    if (playlistId) {
+      playerVars.listType = "playlist";
+      playerVars.list = playlistId;
+    } else {
+      config.videoId = videoId;
+    }
+
+    playerRef.current = new window.YT.Player(containerRef.current, config);
+  }, [isReady, videoId, playlistId]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -64,18 +88,44 @@ const MediaPlayer = forwardRef(function MediaPlayer({ videoId, title, onClose },
     };
   }, []);
 
-  if (!videoId) return null;
+  if (!videoId && !playlistId) return null;
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold truncate">{title || "Now Playing"}</h3>
-        <button
-          onClick={onClose}
-          className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-300"
-        >
-          ✕
-        </button>
+        <h3 className="text-sm font-semibold truncate">
+          {title || "Now Playing"}
+        </h3>
+        <div className="flex gap-1">
+          {playlistId && (
+            <>
+              <button
+                onClick={() => ref.current?.previous()}
+                className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+              >
+                ⏮
+              </button>
+              <button
+                onClick={() => ref.current?.next()}
+                className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+              >
+                ⏭
+              </button>
+              <button
+                onClick={() => ref.current?.shuffle(true)}
+                className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+              >
+                🔀
+              </button>
+            </>
+          )}
+          <button
+            onClick={onClose}
+            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded border border-gray-300"
+          >
+            ✕
+          </button>
+        </div>
       </div>
       <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
         <div

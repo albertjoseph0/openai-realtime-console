@@ -94,6 +94,46 @@ app.get("/youtube/search", async (req, res) => {
   }
 });
 
+// YouTube playlist search endpoint
+app.get("/youtube/playlists/search", async (req, res) => {
+  const query = req.query.q;
+  if (!query) {
+    return res.status(400).json({ error: "Missing query parameter 'q'" });
+  }
+
+  try {
+    const url = new URL("https://www.googleapis.com/youtube/v3/search");
+    url.searchParams.set("part", "snippet");
+    url.searchParams.set("type", "playlist");
+    url.searchParams.set("q", query);
+    url.searchParams.set("maxResults", "1");
+    url.searchParams.set("key", youtubeApiKey);
+
+    const response = await fetch(url.toString());
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("YouTube playlist search API error:", data);
+      return res.status(response.status).json({ error: "YouTube API error" });
+    }
+
+    const item = data.items?.[0];
+    if (!item) {
+      return res.json({ found: false });
+    }
+
+    res.json({
+      found: true,
+      playlistId: item.id.playlistId,
+      title: item.snippet.title,
+      channelTitle: item.snippet.channelTitle,
+    });
+  } catch (error) {
+    console.error("YouTube playlist search error:", error);
+    res.status(500).json({ error: "Failed to search YouTube playlists" });
+  }
+});
+
 // Render the React client
 app.use("*", async (req, res, next) => {
   const url = req.originalUrl;
