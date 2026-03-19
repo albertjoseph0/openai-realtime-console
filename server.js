@@ -9,6 +9,7 @@ const port = process.env.PORT || 3000;
 const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
 const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
 const azureDeployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+const youtubeApiKey = process.env.YOUTUBE_API_KEY;
 
 // Configure Vite middleware for React client
 const vite = await createViteServer({
@@ -50,6 +51,46 @@ app.get("/token", async (req, res) => {
   } catch (error) {
     console.error("Token generation error:", error);
     res.status(500).json({ error: "Failed to generate token" });
+  }
+});
+
+// YouTube search endpoint (proxies YouTube Data API to keep key private)
+app.get("/youtube/search", async (req, res) => {
+  const query = req.query.q;
+  if (!query) {
+    return res.status(400).json({ error: "Missing query parameter 'q'" });
+  }
+
+  try {
+    const url = new URL("https://www.googleapis.com/youtube/v3/search");
+    url.searchParams.set("part", "snippet");
+    url.searchParams.set("type", "video");
+    url.searchParams.set("q", query);
+    url.searchParams.set("maxResults", "1");
+    url.searchParams.set("key", youtubeApiKey);
+
+    const response = await fetch(url.toString());
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("YouTube API error:", data);
+      return res.status(response.status).json({ error: "YouTube API error" });
+    }
+
+    const item = data.items?.[0];
+    if (!item) {
+      return res.json({ found: false });
+    }
+
+    res.json({
+      found: true,
+      videoId: item.id.videoId,
+      title: item.snippet.title,
+      channelTitle: item.snippet.channelTitle,
+    });
+  } catch (error) {
+    console.error("YouTube search error:", error);
+    res.status(500).json({ error: "Failed to search YouTube" });
   }
 });
 

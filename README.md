@@ -20,6 +20,7 @@ Fill in the following values in `.env`:
 - `AZURE_OPENAI_ENDPOINT` — Your Azure OpenAI resource endpoint (e.g., `https://my-resource.openai.azure.com`)
 - `AZURE_OPENAI_API_KEY` — Your Azure OpenAI API key
 - `AZURE_OPENAI_DEPLOYMENT` — Your realtime model deployment name
+- `YOUTUBE_API_KEY` — Your [YouTube Data API v3](https://console.cloud.google.com/apis/library/youtube.googleapis.com) key (for the play media feature)
 
 Running this application locally requires [Node.js](https://nodejs.org/) to be installed. Install dependencies for the application with:
 
@@ -38,6 +39,12 @@ This should start the console application on [http://localhost:3000](http://loca
 This application is a minimal template that uses [express](https://expressjs.com/) to serve the React frontend contained in the [`/client`](./client) folder. The server is configured to use [vite](https://vitejs.dev/) to build the React frontend.
 
 This application shows how to send and receive Realtime API events over the WebRTC data channel and configure client-side function calling. You can also view the JSON payloads for client and server events using the logging panel in the UI.
+
+### Features
+
+- **Voice conversations** — Real-time audio chat via Azure OpenAI Realtime API (WebRTC)
+- **Play media** — Ask the AI to play any song or video (e.g., "Play Bohemian Rhapsody by Queen") and it will search YouTube and play it inline via an embedded iframe
+- **Color palette** — Ask for color palette suggestions and see them rendered visually
 
 ## License
 

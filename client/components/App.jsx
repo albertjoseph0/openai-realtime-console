@@ -41,7 +41,7 @@ export default function App() {
     await pc.setLocalDescription(offer);
 
     const sdpResponse = await fetch(
-      `${endpoint}/openai/v1/realtime/calls?webrtcfilter=on`,
+      `${endpoint}/openai/v1/realtime/calls`,
       {
         method: "POST",
         body: offer.sdp,
