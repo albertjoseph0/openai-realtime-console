@@ -22,3 +22,6 @@ youtube-tokens.json
 
 # jetbrains setting folder
 .idea/
+
+# vite temp files
+vite.config.js.timestamp-*
