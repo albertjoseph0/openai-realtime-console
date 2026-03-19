@@ -1,7 +1,7 @@
 {
   "type": "module",
   "scripts": {
-    "dev": "nodemon server.js --dev",
+    "dev": "nodemon --ignore youtube-tokens.json server.js --dev",
     "start": "node server.js",
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build --outDir dist/client --ssrManifest",
@@ -12,6 +12,8 @@
   "dependencies": {
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "google-auth-library": "^10.6.2",
+    "googleapis": "^171.4.0",
     "history": "^5.3.0",
     "minipass": "^7.0.4",
     "react": "^18.2.0",

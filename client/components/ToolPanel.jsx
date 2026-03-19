@@ -15,6 +15,21 @@ Call this function when a user asks to play a playlist.
 Extract the playlist name or description from their request.
 `;
 
+const playMyPlaylistDescription = `
+Call this function when a user asks to play one of their own personal YouTube playlists.
+This requires the user to be signed in with YouTube. Extract the playlist name from their request.
+`;
+
+const playLikedVideosDescription = `
+Call this function when a user asks to play their liked videos or favorites from YouTube.
+This requires the user to be signed in with YouTube.
+`;
+
+const listMyPlaylistsDescription = `
+Call this function when a user asks to see or list their YouTube playlists.
+This requires the user to be signed in with YouTube.
+`;
+
 const sessionUpdate = {
   type: "session.update",
   session: {
@@ -96,6 +111,35 @@ const sessionUpdate = {
         description: "Shuffle the current playlist so tracks play in random order.",
         parameters: { type: "object", strict: true, properties: {} },
       },
+      {
+        type: "function",
+        name: "play_my_playlist",
+        description: playMyPlaylistDescription,
+        parameters: {
+          type: "object",
+          strict: true,
+          properties: {
+            playlist_name: {
+              type: "string",
+              description:
+                "Name or partial name of the user's personal playlist to play.",
+            },
+          },
+          required: ["playlist_name"],
+        },
+      },
+      {
+        type: "function",
+        name: "play_liked_videos",
+        description: playLikedVideosDescription,
+        parameters: { type: "object", strict: true, properties: {} },
+      },
+      {
+        type: "function",
+        name: "list_my_playlists",
+        description: listMyPlaylistsDescription,
+        parameters: { type: "object", strict: true, properties: {} },
+      },
     ],
     tool_choice: "auto",
   },
@@ -137,6 +181,15 @@ export default function ToolPanel({
   const [functionAdded, setFunctionAdded] = useState(false);
   const [functionCallOutput, setFunctionCallOutput] = useState(null);
   const [currentVideo, setCurrentVideo] = useState(null);
+  const [ytAuthenticated, setYtAuthenticated] = useState(false);
+
+  // Check YouTube auth status on mount
+  useEffect(() => {
+    fetch("/auth/google/status")
+      .then((r) => r.json())
+      .then((data) => setYtAuthenticated(data.authenticated))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!events || events.length === 0) return;
@@ -190,6 +243,27 @@ export default function ToolPanel({
           ["next_track", "previous_track", "shuffle_playlist"].includes(output.name)
         ) {
           handlePlaybackControl(output);
+        }
+
+        if (
+          output.type === "function_call" &&
+          output.name === "play_my_playlist"
+        ) {
+          handlePlayMyPlaylist(output);
+        }
+
+        if (
+          output.type === "function_call" &&
+          output.name === "play_liked_videos"
+        ) {
+          handlePlayLikedVideos(output);
+        }
+
+        if (
+          output.type === "function_call" &&
+          output.name === "list_my_playlists"
+        ) {
+          handleListMyPlaylists(output);
         }
       });
     }
@@ -357,6 +431,169 @@ export default function ToolPanel({
     }, 500);
   }
 
+  async function handlePlayMyPlaylist(output) {
+    const { playlist_name } = JSON.parse(output.arguments);
+
+    if (!ytAuthenticated) {
+      sendFunctionResult(output.call_id, {
+        status: "not_authenticated",
+        message: "Please sign in with YouTube first using the button in the Media Player panel.",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch("/youtube/my/playlists");
+      if (response.status === 401) {
+        setYtAuthenticated(false);
+        sendFunctionResult(output.call_id, {
+          status: "not_authenticated",
+          message: "YouTube session expired. Please sign in again.",
+        });
+        return;
+      }
+
+      const data = await response.json();
+      const searchLower = playlist_name.toLowerCase();
+      const match = data.playlists?.find((p) =>
+        p.title.toLowerCase().includes(searchLower),
+      );
+
+      if (match) {
+        setCurrentVideo({ playlistId: match.id, title: match.title });
+        onMediaPlay();
+        sendFunctionResult(output.call_id, {
+          status: "playing",
+          title: match.title,
+          type: "playlist",
+          itemCount: match.itemCount,
+        });
+      } else {
+        const available = (data.playlists || []).map((p) => p.title).slice(0, 10);
+        sendFunctionResult(output.call_id, {
+          status: "not_found",
+          message: `No playlist matching "${playlist_name}" found.`,
+          available_playlists: available,
+        });
+      }
+    } catch (error) {
+      console.error("Play my playlist failed:", error);
+      sendFunctionResult(output.call_id, {
+        status: "error",
+        message: "Failed to fetch your playlists.",
+      });
+    }
+
+    setTimeout(() => {
+      sendClientEvent({ type: "response.create" });
+    }, 500);
+  }
+
+  async function handlePlayLikedVideos(output) {
+    if (!ytAuthenticated) {
+      sendFunctionResult(output.call_id, {
+        status: "not_authenticated",
+        message: "Please sign in with YouTube first using the button in the Media Player panel.",
+      });
+      setTimeout(() => sendClientEvent({ type: "response.create" }), 500);
+      return;
+    }
+
+    try {
+      const response = await fetch("/youtube/my/liked");
+      if (response.status === 401) {
+        setYtAuthenticated(false);
+        sendFunctionResult(output.call_id, {
+          status: "not_authenticated",
+          message: "YouTube session expired. Please sign in again.",
+        });
+        setTimeout(() => sendClientEvent({ type: "response.create" }), 500);
+        return;
+      }
+
+      const data = await response.json();
+      if (data.videos && data.videos.length > 0) {
+        setCurrentVideo({ playlistId: "LL", title: "Liked Videos" });
+        onMediaPlay();
+        sendFunctionResult(output.call_id, {
+          status: "playing",
+          title: "Liked Videos",
+          type: "playlist",
+          videoCount: data.videos.length,
+        });
+      } else {
+        sendFunctionResult(output.call_id, {
+          status: "empty",
+          message: "No liked videos found.",
+        });
+      }
+    } catch (error) {
+      console.error("Play liked videos failed:", error);
+      sendFunctionResult(output.call_id, {
+        status: "error",
+        message: "Failed to fetch liked videos.",
+      });
+    }
+
+    setTimeout(() => {
+      sendClientEvent({ type: "response.create" });
+    }, 500);
+  }
+
+  async function handleListMyPlaylists(output) {
+    if (!ytAuthenticated) {
+      sendFunctionResult(output.call_id, {
+        status: "not_authenticated",
+        message: "Please sign in with YouTube first using the button in the Media Player panel.",
+      });
+      setTimeout(() => sendClientEvent({ type: "response.create" }), 500);
+      return;
+    }
+
+    try {
+      const response = await fetch("/youtube/my/playlists");
+      if (response.status === 401) {
+        setYtAuthenticated(false);
+        sendFunctionResult(output.call_id, {
+          status: "not_authenticated",
+          message: "YouTube session expired. Please sign in again.",
+        });
+        setTimeout(() => sendClientEvent({ type: "response.create" }), 500);
+        return;
+      }
+
+      const data = await response.json();
+      sendFunctionResult(output.call_id, {
+        status: "success",
+        playlists: (data.playlists || []).map((p) => ({
+          title: p.title,
+          itemCount: p.itemCount,
+        })),
+      });
+    } catch (error) {
+      console.error("List playlists failed:", error);
+      sendFunctionResult(output.call_id, {
+        status: "error",
+        message: "Failed to fetch your playlists.",
+      });
+    }
+
+    setTimeout(() => {
+      sendClientEvent({ type: "response.create" });
+    }, 500);
+  }
+
+  function sendFunctionResult(callId, result) {
+    sendClientEvent({
+      type: "conversation.item.create",
+      item: {
+        type: "function_call_output",
+        call_id: callId,
+        output: JSON.stringify(result),
+      },
+    });
+  }
+
   useEffect(() => {
     if (!isSessionActive) {
       setFunctionAdded(false);
@@ -365,10 +602,36 @@ export default function ToolPanel({
     }
   }, [isSessionActive]);
 
+  function handleYouTubeLogout() {
+    fetch("/auth/google/logout", { method: "POST" })
+      .then(() => setYtAuthenticated(false))
+      .catch(() => {});
+  }
+
   return (
     <section className="h-full w-full flex flex-col gap-4">
       <div className="bg-gray-50 rounded-md p-4">
-        <h2 className="text-lg font-bold">Media Player</h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-bold">Media Player</h2>
+          {ytAuthenticated ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-green-600 font-medium">YouTube ✓</span>
+              <button
+                onClick={handleYouTubeLogout}
+                className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+              >
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <a
+              href="/auth/google"
+              className="text-xs px-2 py-1 rounded border border-blue-500 text-blue-600 hover:bg-blue-50 no-underline"
+            >
+              Sign in with YouTube
+            </a>
+          )}
+        </div>
         {isSessionActive ? (
           currentVideo ? (
             <MediaPlayer
