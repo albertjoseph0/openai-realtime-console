@@ -1,9 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
-export default function MediaPlayer({ videoId, title, onClose }) {
+const MediaPlayer = forwardRef(function MediaPlayer({ videoId, title, onClose }, ref) {
   const playerRef = useRef(null);
   const containerRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
+
+  useImperativeHandle(ref, () => ({
+    pause: () => {
+      try { playerRef.current?.pauseVideo(); } catch {}
+    },
+    play: () => {
+      try { playerRef.current?.playVideo(); } catch {}
+    },
+  }));
 
   // Load YouTube IFrame API script once
   useEffect(() => {
@@ -76,4 +85,6 @@ export default function MediaPlayer({ videoId, title, onClose }) {
       </div>
     </div>
   );
-}
+});
+
+export default MediaPlayer;

@@ -8,8 +8,11 @@ export default function App() {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [events, setEvents] = useState([]);
   const [dataChannel, setDataChannel] = useState(null);
+  const [isTalking, setIsTalking] = useState(false);
   const peerConnection = useRef(null);
   const audioElement = useRef(null);
+  const micTrack = useRef(null);
+  const mediaPlayerRef = useRef(null);
 
   async function startSession() {
     // Get an ephemeral token and Azure endpoint for the Realtime API
@@ -30,7 +33,10 @@ export default function App() {
     const ms = await navigator.mediaDevices.getUserMedia({
       audio: true,
     });
-    pc.addTrack(ms.getTracks()[0]);
+    const track = ms.getTracks()[0];
+    track.enabled = false; // Start muted
+    micTrack.current = track;
+    pc.addTrack(track);
 
     // Set up data channel for sending and receiving events
     const dc = pc.createDataChannel("oai-events");
@@ -59,6 +65,19 @@ export default function App() {
     peerConnection.current = pc;
   }
 
+  function startTalking() {
+    if (isTalking) return;
+    mediaPlayerRef.current?.pause();
+    if (micTrack.current) micTrack.current.enabled = true;
+    setIsTalking(true);
+  }
+
+  // Called by ToolPanel when a YouTube video starts playing
+  function onMediaPlay() {
+    if (micTrack.current) micTrack.current.enabled = false;
+    setIsTalking(false);
+  }
+
   // Stop current session, clean up peer connection and data channel
   function stopSession() {
     if (dataChannel) {
@@ -76,8 +95,10 @@ export default function App() {
     }
 
     setIsSessionActive(false);
+    setIsTalking(false);
     setDataChannel(null);
     peerConnection.current = null;
+    micTrack.current = null;
   }
 
   // Send a message to the model
@@ -164,6 +185,8 @@ export default function App() {
               sendTextMessage={sendTextMessage}
               events={events}
               isSessionActive={isSessionActive}
+              isTalking={isTalking}
+              startTalking={startTalking}
             />
           </section>
         </section>
@@ -173,6 +196,8 @@ export default function App() {
             sendTextMessage={sendTextMessage}
             events={events}
             isSessionActive={isSessionActive}
+            mediaPlayerRef={mediaPlayerRef}
+            onMediaPlay={onMediaPlay}
           />
         </section>
       </main>

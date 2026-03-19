@@ -91,6 +91,8 @@ export default function ToolPanel({
   isSessionActive,
   sendClientEvent,
   events,
+  mediaPlayerRef,
+  onMediaPlay,
 }) {
   const [functionAdded, setFunctionAdded] = useState(false);
   const [functionCallOutput, setFunctionCallOutput] = useState(null);
@@ -150,6 +152,7 @@ export default function ToolPanel({
 
       if (data.found) {
         setCurrentVideo({ videoId: data.videoId, title: data.title });
+        onMediaPlay();
 
         // Send function result back to the model
         sendClientEvent({
@@ -215,6 +218,7 @@ export default function ToolPanel({
         {isSessionActive ? (
           currentVideo ? (
             <MediaPlayer
+              ref={mediaPlayerRef}
               videoId={currentVideo.videoId}
               title={currentVideo.title}
               onClose={() => setCurrentVideo(null)}

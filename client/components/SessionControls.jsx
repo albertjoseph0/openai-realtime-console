@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CloudLightning, CloudOff, MessageSquare } from "react-feather";
+import { CloudLightning, CloudOff, MessageSquare, Mic } from "react-feather";
 import Button from "./Button";
 
 function SessionStopped({ startSession }) {
@@ -25,7 +25,7 @@ function SessionStopped({ startSession }) {
   );
 }
 
-function SessionActive({ stopSession, sendTextMessage }) {
+function SessionActive({ stopSession, sendTextMessage, isTalking, startTalking }) {
   const [message, setMessage] = useState("");
 
   function handleSendClientEvent() {
@@ -35,6 +35,13 @@ function SessionActive({ stopSession, sendTextMessage }) {
 
   return (
     <div className="flex items-center justify-center w-full h-full gap-4">
+      <Button
+        onClick={startTalking}
+        icon={<Mic height={16} />}
+        className={isTalking ? "bg-red-500 animate-pulse" : "bg-green-500"}
+      >
+        {isTalking ? "listening..." : "talk"}
+      </Button>
       <input
         onKeyDown={(e) => {
           if (e.key === "Enter" && message.trim()) {
@@ -72,6 +79,8 @@ export default function SessionControls({
   sendTextMessage,
   serverEvents,
   isSessionActive,
+  isTalking,
+  startTalking,
 }) {
   return (
     <div className="flex gap-4 border-t-2 border-gray-200 h-full rounded-md">
@@ -81,6 +90,8 @@ export default function SessionControls({
           sendClientEvent={sendClientEvent}
           sendTextMessage={sendTextMessage}
           serverEvents={serverEvents}
+          isTalking={isTalking}
+          startTalking={startTalking}
         />
       ) : (
         <SessionStopped startSession={startSession} />
