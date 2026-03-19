@@ -64,7 +64,7 @@ loadStoredTokens();
 
 // Configure Vite middleware for React client
 const vite = await createViteServer({
-  server: { middlewareMode: true },
+  server: { middlewareMode: true, hmr: false },
   appType: "custom",
 });
 app.use(vite.middlewares);
@@ -830,6 +830,9 @@ app.get("/spotify/currently-playing", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Healthcheck endpoint (required by once)
+app.get("/up", (req, res) => res.sendStatus(200));
 
 // Render the React client
 app.use("*", async (req, res, next) => {
