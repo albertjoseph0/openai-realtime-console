@@ -12,10 +12,11 @@ export default function App() {
   const audioElement = useRef(null);
 
   async function startSession() {
-    // Get a session token for OpenAI Realtime API
+    // Get an ephemeral token and Azure endpoint for the Realtime API
     const tokenResponse = await fetch("/token");
     const data = await tokenResponse.json();
     const EPHEMERAL_KEY = data.value;
+    const endpoint = data.endpoint;
 
     // Create a peer connection
     const pc = new RTCPeerConnection();
@@ -39,16 +40,17 @@ export default function App() {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    const baseUrl = "https://api.openai.com/v1/realtime/calls";
-    const model = "gpt-realtime";
-    const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
-      method: "POST",
-      body: offer.sdp,
-      headers: {
-        Authorization: `Bearer ${EPHEMERAL_KEY}`,
-        "Content-Type": "application/sdp",
+    const sdpResponse = await fetch(
+      `${endpoint}/openai/v1/realtime/calls?webrtcfilter=on`,
+      {
+        method: "POST",
+        body: offer.sdp,
+        headers: {
+          Authorization: `Bearer ${EPHEMERAL_KEY}`,
+          "Content-Type": "application/sdp",
+        },
       },
-    });
+    );
 
     const sdp = await sdpResponse.text();
     const answer = { type: "answer", sdp };
