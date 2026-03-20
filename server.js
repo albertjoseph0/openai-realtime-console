@@ -62,7 +62,7 @@ function persistTokens(tokens) {
 // Load tokens on startup
 loadStoredTokens();
 
-// Configure Vite middleware for React client
+// Configure Vite middleware for client assets
 const vite = await createViteServer({
   server: { middlewareMode: true, hmr: false },
   appType: "custom",
@@ -834,7 +834,7 @@ app.get("/spotify/currently-playing", async (req, res) => {
 // Healthcheck endpoint (required by once)
 app.get("/up", (req, res) => res.sendStatus(200));
 
-// Render the React client
+// Serve the client HTML for all unmatched routes
 app.use("*", async (req, res, next) => {
   const url = req.originalUrl;
 
@@ -843,12 +843,8 @@ app.use("*", async (req, res, next) => {
       url,
       fs.readFileSync("./client/index.html", "utf-8"),
     );
-    const { render } = await vite.ssrLoadModule("./client/entry-server.jsx");
-    const appHtml = await render(url);
-    const html = template.replace(`<!--ssr-outlet-->`, appHtml?.html);
-    res.status(200).set({ "Content-Type": "text/html" }).end(html);
+    res.status(200).set({ "Content-Type": "text/html" }).end(template);
   } catch (e) {
-    vite.ssrFixStacktrace(e);
     next(e);
   }
 });
