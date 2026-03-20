@@ -21,6 +21,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Start Session button
   dom.startBtn.addEventListener("click", async () => {
+    // Prewarm the YouTube player in a user gesture context for iOS autoplay reliability.
+    youtubePlayer.prewarm();
     if (dom.startBtn.dataset.activating === "true") return;
     dom.startBtn.dataset.activating = "true";
     dom.startBtn.style.backgroundColor = "#555";
@@ -44,7 +46,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   // Talk button
-  dom.talkBtn.addEventListener("click", () => startTalking());
+  dom.talkBtn.addEventListener("click", () => {
+    youtubePlayer.prewarm();
+    youtubePlayer.unlockFromGesture();
+    startTalking();
+  });
 
   // Disconnect button
   dom.disconnectBtn.addEventListener("click", () => stopSession());
@@ -61,9 +67,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   );
 
   // YouTube player controls
-  document.getElementById("yt-prev")?.addEventListener("click", () => youtubePlayer.previous());
-  document.getElementById("yt-next")?.addEventListener("click", () => youtubePlayer.next());
-  document.getElementById("yt-shuffle")?.addEventListener("click", () => youtubePlayer.shuffle(true));
+  document.getElementById("yt-prev")?.addEventListener("click", () => {
+    youtubePlayer.prewarm();
+    youtubePlayer.previous();
+  });
+  document.getElementById("yt-next")?.addEventListener("click", () => {
+    youtubePlayer.prewarm();
+    youtubePlayer.next();
+  });
+  document.getElementById("yt-shuffle")?.addEventListener("click", () => {
+    youtubePlayer.prewarm();
+    youtubePlayer.shuffle(true);
+  });
   document.getElementById("yt-close")?.addEventListener("click", () => {
     youtubePlayer.destroy();
     const container = document.querySelector("[data-testid='youtube-player']");

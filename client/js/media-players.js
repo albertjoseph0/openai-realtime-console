@@ -6,13 +6,25 @@ const youtubePlayer = {
   _player: null,
   _container: null,
   _ready: false,
+  _playerReady: false,
+  _hasLoadedMedia: false,
   _onPlay: null,
+  _pendingLoad: null,
+  _createOnReady: false,
+  _apiReadyHandlerInstalled: false,
+  _autoplayPending: false,
+  _autoplayRetryCount: 0,
+  _playKickTimers: [],
+  _gestureUnlockTimer: null,
+  _ignorePlayUntilTs: 0,
+  _audioUnlockContext: null,
 
   init(containerId, onPlay) {
     this._container = document.getElementById(containerId);
     this._onPlay = onPlay;
     if (window.YT && window.YT.Player) {
       this._ready = true;
+      if (this._createOnReady) this._ensurePlayer();
       return;
     }
     const existing = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
@@ -21,13 +33,32 @@ const youtubePlayer = {
       tag.src = "https://www.youtube.com/iframe_api";
       document.head.appendChild(tag);
     }
-    window.onYouTubeIframeAPIReady = () => {
-      this._ready = true;
-    };
+    if (!this._apiReadyHandlerInstalled) {
+      const previousReadyHandler = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (typeof previousReadyHandler === "function") previousReadyHandler();
+        this._ready = true;
+        if (this._createOnReady) this._ensurePlayer();
+        this._flushPendingLoad();
+      };
+      this._apiReadyHandlerInstalled = true;
+    }
+  },
+
+  prewarm() {
+    this._createOnReady = true;
+    if (this._ready) this._ensurePlayer();
+  },
+
+  unlockFromGesture() {
+    this.prewarm();
+    this._unlockAudioContext();
+    if (!this._playerReady || this._hasLoadedMedia || this._pendingLoad) return;
+    this._runGestureUnlockBootstrap();
   },
 
   load(videoId, playlistId, title) {
-    if (!this._ready || (!videoId && !playlistId)) return;
+    if (!videoId && !playlistId) return false;
 
     const titleEl = document.getElementById("yt-title");
     if (titleEl) titleEl.textContent = title || "Now Playing";
@@ -44,54 +75,216 @@ const youtubePlayer = {
     const outer = document.querySelector("[data-testid='youtube-player']");
     if (outer) outer.style.display = "block";
 
-    if (this._player) {
-      if (playlistId) {
-        this._player.loadPlaylist({
-          listType: "playlist",
-          list: playlistId,
-          index: 0,
-          startSeconds: 0,
-        });
-      } else {
-        this._player.loadVideoById(videoId);
-      }
-      return;
-    }
+    this._pendingLoad = { videoId, playlistId };
+    this._createOnReady = true;
+
+    if (!this._ready) return true;
+    this._ensurePlayer();
+    this._flushPendingLoad();
+    return true;
+  },
+
+  _ensurePlayer() {
+    if (this._player || !this._ready || !this._container) return;
 
     const playerVars = { playsinline: 1, autoplay: 1, rel: 0 };
-    const config = { height: "100%", width: "100%", playerVars };
-
-    if (playlistId) {
-      playerVars.listType = "playlist";
-      playerVars.list = playlistId;
-    } else {
-      config.videoId = videoId;
-    }
+    const config = {
+      height: "100%",
+      width: "100%",
+      playerVars,
+      events: {
+        onReady: () => this._onPlayerReady(),
+        onStateChange: (event) => this._onPlayerStateChange(event),
+      },
+    };
 
     this._player = new window.YT.Player(this._container, config);
   },
 
+  _onPlayerReady() {
+    this._playerReady = true;
+    const iframe = this._player?.getIframe?.();
+    if (iframe) {
+      iframe.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
+    }
+    this._flushPendingLoad();
+  },
+
+  _onPlayerStateChange(event) {
+    const state = event?.data;
+    const playerState = window.YT?.PlayerState;
+    if (!playerState) return;
+
+    if (state === playerState.PLAYING) {
+      if (Date.now() < this._ignorePlayUntilTs) return;
+      this._autoplayPending = false;
+      this._autoplayRetryCount = 0;
+      this._clearPlayKickTimers();
+      this._onPlay?.();
+      return;
+    }
+
+    if (
+      this._autoplayPending
+      && this._autoplayRetryCount < 2
+      && (
+        state === playerState.UNSTARTED
+        || state === playerState.CUED
+        || state === playerState.PAUSED
+      )
+    ) {
+      this._autoplayRetryCount += 1;
+      this._tryPlayVideo();
+    }
+  },
+
+  _flushPendingLoad() {
+    if (!this._pendingLoad || !this._player || !this._playerReady) return;
+    const { videoId, playlistId } = this._pendingLoad;
+    this._pendingLoad = null;
+    this._hasLoadedMedia = true;
+
+    if (playlistId) {
+      this._player.loadPlaylist({
+        listType: "playlist",
+        list: playlistId,
+        index: 0,
+        startSeconds: 0,
+      });
+    } else {
+      this._player.loadVideoById(videoId);
+    }
+
+    this._autoplayPending = true;
+    this._autoplayRetryCount = 0;
+    this._queuePlayKickBurst();
+  },
+
+  _tryPlayVideo() {
+    try {
+      this._player?.playVideo?.();
+    } catch (error) {
+      console.warn("[YouTube] playVideo() failed:", error);
+    }
+  },
+
+  _queuePlayKickBurst() {
+    if (!this._player || !this._playerReady) return;
+    this._clearPlayKickTimers();
+    this._tryPlayVideo();
+    this._playKickTimers = [
+      setTimeout(() => this._tryPlayVideo(), 250),
+      setTimeout(() => this._tryPlayVideo(), 900),
+      setTimeout(() => this._tryPlayVideo(), 1700),
+    ];
+  },
+
+  _clearPlayKickTimers() {
+    this._playKickTimers.forEach((timerId) => clearTimeout(timerId));
+    this._playKickTimers = [];
+  },
+
+  _unlockAudioContext() {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) return;
+    if (!this._audioUnlockContext) {
+      this._audioUnlockContext = new AudioContextCtor();
+    }
+    if (this._audioUnlockContext.state === "suspended") {
+      this._audioUnlockContext.resume().catch((error) => {
+        console.warn("[YouTube] audio context resume failed:", error);
+      });
+    }
+  },
+
+  _runGestureUnlockBootstrap() {
+    if (!this._player || !this._playerReady) return;
+    this._ignorePlayUntilTs = Date.now() + 1500;
+    if (this._gestureUnlockTimer) {
+      clearTimeout(this._gestureUnlockTimer);
+      this._gestureUnlockTimer = null;
+    }
+
+    // A short hidden play/stop sequence inside the Talk click gesture improves first-play reliability on iOS.
+    const wasMuted = this._player.isMuted?.() ?? false;
+    try {
+      this._player.mute?.();
+      this._player.loadVideoById("M7lc1UVf-VE");
+      this._player.playVideo?.();
+      this._gestureUnlockTimer = setTimeout(() => {
+        try {
+          this._player?.stopVideo?.();
+          if (!wasMuted) this._player?.unMute?.();
+        } catch (error) {
+          console.warn("[YouTube] gesture unlock cleanup failed:", error);
+        }
+      }, 160);
+    } catch (error) {
+      console.warn("[YouTube] gesture unlock failed:", error);
+    }
+  },
+
   pause() {
-    try { this._player?.pauseVideo(); } catch {}
+    this._autoplayPending = false;
+    this._autoplayRetryCount = 0;
+    this._clearPlayKickTimers();
+    try {
+      this._player?.pauseVideo?.();
+    } catch (error) {
+      console.warn("[YouTube] pauseVideo() failed:", error);
+    }
   },
   play() {
-    try { this._player?.playVideo(); } catch {}
+    this._autoplayPending = true;
+    this._autoplayRetryCount = 0;
+    this._queuePlayKickBurst();
   },
   next() {
-    try { this._player?.nextVideo(); } catch {}
+    this._autoplayPending = true;
+    this._autoplayRetryCount = 0;
+    try {
+      this._player?.nextVideo?.();
+    } catch (error) {
+      console.warn("[YouTube] nextVideo() failed:", error);
+    }
+    this._queuePlayKickBurst();
   },
   previous() {
-    try { this._player?.previousVideo(); } catch {}
+    this._autoplayPending = true;
+    this._autoplayRetryCount = 0;
+    try {
+      this._player?.previousVideo?.();
+    } catch (error) {
+      console.warn("[YouTube] previousVideo() failed:", error);
+    }
+    this._queuePlayKickBurst();
   },
   shuffle(on = true) {
-    try { this._player?.setShuffle(on); } catch {}
+    try {
+      this._player?.setShuffle?.(on);
+    } catch (error) {
+      console.warn("[YouTube] setShuffle() failed:", error);
+    }
   },
   destroy() {
+    this._clearPlayKickTimers();
+    if (this._gestureUnlockTimer) {
+      clearTimeout(this._gestureUnlockTimer);
+      this._gestureUnlockTimer = null;
+    }
+    this._autoplayPending = false;
+    this._autoplayRetryCount = 0;
+    this._pendingLoad = null;
+    this._playerReady = false;
+    this._hasLoadedMedia = false;
+    this._ignorePlayUntilTs = 0;
     try {
       if (this._player?.destroy) {
         this._player.destroy();
       }
-    } catch {}
+    } catch (error) {
+      console.warn("[YouTube] destroy() failed:", error);
+    }
     this._player = null;
   },
 };

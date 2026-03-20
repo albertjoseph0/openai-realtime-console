@@ -335,15 +335,21 @@ async function handlePlayMedia(output) {
     const data = await response.json();
 
     if (data.found) {
-      currentVideo = { videoId: data.videoId, title: data.title };
-      youtubePlayer.load(data.videoId, null, data.title);
-      onMediaPlay();
-
-      sendFunctionResult(output.call_id, {
-        status: "playing",
-        title: data.title,
-        channel: data.channelTitle,
-      });
+      const playbackRequested = youtubePlayer.load(data.videoId, null, data.title);
+      if (playbackRequested) {
+        currentVideo = { videoId: data.videoId, title: data.title };
+        onMediaPlay();
+        sendFunctionResult(output.call_id, {
+          status: "playing",
+          title: data.title,
+          channel: data.channelTitle,
+        });
+      } else {
+        sendFunctionResult(output.call_id, {
+          status: "error",
+          message: "Unable to start YouTube playback request.",
+        });
+      }
     } else {
       sendFunctionResult(output.call_id, {
         status: "not_found",
@@ -370,16 +376,22 @@ async function handlePlayPlaylist(output) {
     const data = await response.json();
 
     if (data.found) {
-      currentVideo = { playlistId: data.playlistId, title: data.title };
-      youtubePlayer.load(null, data.playlistId, data.title);
-      onMediaPlay();
-
-      sendFunctionResult(output.call_id, {
-        status: "playing",
-        title: data.title,
-        channel: data.channelTitle,
-        type: "playlist",
-      });
+      const playbackRequested = youtubePlayer.load(null, data.playlistId, data.title);
+      if (playbackRequested) {
+        currentVideo = { playlistId: data.playlistId, title: data.title };
+        onMediaPlay();
+        sendFunctionResult(output.call_id, {
+          status: "playing",
+          title: data.title,
+          channel: data.channelTitle,
+          type: "playlist",
+        });
+      } else {
+        sendFunctionResult(output.call_id, {
+          status: "error",
+          message: "Unable to start YouTube playlist request.",
+        });
+      }
     } else {
       sendFunctionResult(output.call_id, {
         status: "not_found",
@@ -454,15 +466,22 @@ async function handlePlayMyPlaylist(output) {
     );
 
     if (match) {
-      currentVideo = { playlistId: match.id, title: match.title };
-      youtubePlayer.load(null, match.id, match.title);
-      onMediaPlay();
-      sendFunctionResult(output.call_id, {
-        status: "playing",
-        title: match.title,
-        type: "playlist",
-        itemCount: match.itemCount,
-      });
+      const playbackRequested = youtubePlayer.load(null, match.id, match.title);
+      if (playbackRequested) {
+        currentVideo = { playlistId: match.id, title: match.title };
+        onMediaPlay();
+        sendFunctionResult(output.call_id, {
+          status: "playing",
+          title: match.title,
+          type: "playlist",
+          itemCount: match.itemCount,
+        });
+      } else {
+        sendFunctionResult(output.call_id, {
+          status: "error",
+          message: "Unable to start your playlist playback request.",
+        });
+      }
     } else {
       const available = (data.playlists || []).map((p) => p.title).slice(0, 10);
       sendFunctionResult(output.call_id, {
@@ -508,15 +527,22 @@ async function handlePlayLikedVideos(output) {
 
     const data = await response.json();
     if (data.videos && data.videos.length > 0) {
-      currentVideo = { playlistId: "LL", title: "Liked Videos" };
-      youtubePlayer.load(null, "LL", "Liked Videos");
-      onMediaPlay();
-      sendFunctionResult(output.call_id, {
-        status: "playing",
-        title: "Liked Videos",
-        type: "playlist",
-        videoCount: data.videos.length,
-      });
+      const playbackRequested = youtubePlayer.load(null, "LL", "Liked Videos");
+      if (playbackRequested) {
+        currentVideo = { playlistId: "LL", title: "Liked Videos" };
+        onMediaPlay();
+        sendFunctionResult(output.call_id, {
+          status: "playing",
+          title: "Liked Videos",
+          type: "playlist",
+          videoCount: data.videos.length,
+        });
+      } else {
+        sendFunctionResult(output.call_id, {
+          status: "error",
+          message: "Unable to start liked videos playback request.",
+        });
+      }
     } else {
       sendFunctionResult(output.call_id, {
         status: "empty",
