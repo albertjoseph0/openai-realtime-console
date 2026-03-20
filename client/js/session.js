@@ -43,9 +43,9 @@ function updateAuthButtons() {
   const ytBtn = dom.connectionButtons.querySelector("[data-auth='youtube']");
   if (ytBtn) {
     if (ytAuthenticated) {
-      ytBtn.outerHTML = `<button data-testid="youtube-connected" data-auth="youtube" onclick="window.__handleYouTubeLogout()" class="px-5 py-3 rounded-full text-sm font-medium transition-colors" style="background-color: rgba(255, 0, 0, 0.15); color: #ff4444; border: 1px solid rgba(255, 0, 0, 0.3);">YouTube ✓</button>`;
+      ytBtn.outerHTML = `<button data-testid="youtube-connected" data-auth="youtube" onclick="window.__handleYouTubeLogout()" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" style="background-color: rgba(255, 0, 0, 0.15); color: #ff4444; border: 1px solid rgba(255, 0, 0, 0.3);">YT ✓</button>`;
     } else {
-      ytBtn.outerHTML = `<a data-testid="connect-youtube" data-auth="youtube" href="/auth/google" class="px-5 py-3 rounded-full text-sm font-medium no-underline transition-colors" style="background-color: var(--color-surface); color: var(--color-text-muted); border: 1px solid #333;">Connect YouTube</a>`;
+      ytBtn.outerHTML = `<a data-testid="connect-youtube" data-auth="youtube" href="/auth/google" class="px-3 py-1.5 rounded-full text-xs font-medium no-underline transition-colors" style="background-color: var(--color-surface); color: var(--color-text-muted); border: 1px solid #333;">YouTube</a>`;
     }
   }
 
@@ -53,9 +53,9 @@ function updateAuthButtons() {
   const spBtn = dom.connectionButtons.querySelector("[data-auth='spotify']");
   if (spBtn) {
     if (spotifyAuthenticated) {
-      spBtn.outerHTML = `<button data-testid="spotify-connected" data-auth="spotify" onclick="window.__handleSpotifyLogout()" class="px-5 py-3 rounded-full text-sm font-medium transition-colors" style="background-color: rgba(29, 185, 84, 0.15); color: #1db954; border: 1px solid rgba(29, 185, 84, 0.3);">Spotify ✓</button>`;
+      spBtn.outerHTML = `<button data-testid="spotify-connected" data-auth="spotify" onclick="window.__handleSpotifyLogout()" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" style="background-color: rgba(29, 185, 84, 0.15); color: #1db954; border: 1px solid rgba(29, 185, 84, 0.3);">SP ✓</button>`;
     } else {
-      spBtn.outerHTML = `<a data-testid="connect-spotify" data-auth="spotify" href="/auth/spotify" class="px-5 py-3 rounded-full text-sm font-medium no-underline transition-colors" style="background-color: var(--color-surface); color: var(--color-text-muted); border: 1px solid #333;">Connect Spotify</a>`;
+      spBtn.outerHTML = `<a data-testid="connect-spotify" data-auth="spotify" href="/auth/spotify" class="px-3 py-1.5 rounded-full text-xs font-medium no-underline transition-colors" style="background-color: var(--color-surface); color: var(--color-text-muted); border: 1px solid #333;">Spotify</a>`;
     }
   }
 }
@@ -206,12 +206,12 @@ function updateTalkButton() {
   if (isTalking) {
     dom.talkBtn.style.backgroundColor = "var(--color-accent-red)";
     dom.talkBtn.style.animation = "pulse-glow 1.5s ease-in-out infinite";
-    dom.talkBtn.style.boxShadow = "0 0 30px rgba(255, 68, 68, 0.5)";
+    dom.talkBtn.style.boxShadow = "0 0 50px rgba(255, 68, 68, 0.5)";
     dom.talkBtn.querySelector(".btn-label").textContent = "Listening...";
   } else {
     dom.talkBtn.style.backgroundColor = "var(--color-accent-green)";
     dom.talkBtn.style.animation = "none";
-    dom.talkBtn.style.boxShadow = "0 0 20px rgba(29, 185, 84, 0.3)";
+    dom.talkBtn.style.boxShadow = "0 0 30px rgba(29, 185, 84, 0.3)";
     dom.talkBtn.querySelector(".btn-label").textContent = "Talk";
   }
 }
@@ -223,11 +223,12 @@ function updateUI() {
     dom.sessionStopped.style.display = "none";
     dom.sessionActive.style.display = "flex";
     dom.connectionButtons.style.display = "flex";
+    if (dom.topBar) dom.topBar.style.display = "flex";
     // Re-enable start button for next time
     const startBtn = dom.sessionStopped.querySelector("[data-testid='start-session-btn']");
     if (startBtn) {
       startBtn.style.backgroundColor = "#4f8cff";
-      startBtn.style.boxShadow = "0 0 30px rgba(79, 140, 255, 0.4)";
+      startBtn.style.boxShadow = "0 0 40px rgba(79, 140, 255, 0.4)";
       startBtn.querySelector(".btn-label").textContent = "Start Session";
     }
     updateAuthButtons();
@@ -235,6 +236,7 @@ function updateUI() {
     dom.sessionStopped.style.display = "flex";
     dom.sessionActive.style.display = "none";
     dom.connectionButtons.style.display = "none";
+    if (dom.topBar) dom.topBar.style.display = "none";
     // Hide media players
     dom.youtubeContainer.style.display = "none";
     dom.spotifyContainer.style.display = "none";

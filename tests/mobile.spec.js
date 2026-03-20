@@ -28,14 +28,16 @@ test.describe("iPhone 15 Pro - Mobile UI", () => {
     expect(box.height).toBeGreaterThanOrEqual(44);
   });
 
-  test("start button is vertically centered in viewport", async ({ page }) => {
+  test("start button is a large slab filling bottom of viewport", async ({ page }) => {
     const btn = page.getByTestId("start-session-btn");
     const box = await btn.boundingBox();
     const viewport = page.viewportSize();
-    const btnCenter = box.y + box.height / 2;
-    // Should be roughly in the middle third of the viewport
-    expect(btnCenter).toBeGreaterThan(viewport.height * 0.2);
-    expect(btnCenter).toBeLessThan(viewport.height * 0.8);
+    // Button should be nearly full width (minus padding)
+    expect(box.width).toBeGreaterThan(viewport.width * 0.8);
+    // Button should fill a large portion of the viewport height
+    expect(box.height).toBeGreaterThan(viewport.height * 0.4);
+    // Button should be in the bottom half of the viewport
+    expect(box.y + box.height).toBeGreaterThan(viewport.height * 0.7);
   });
 
   test("page body uses dark background", async ({ page }) => {
@@ -60,5 +62,10 @@ test.describe("iPhone 15 Pro - Mobile UI", () => {
     );
     // Should be light text (white = rgb(255, 255, 255))
     expect(color).toBe("rgb(255, 255, 255)");
+  });
+
+  test("top bar is hidden before session starts", async ({ page }) => {
+    const topBar = page.locator("#top-bar");
+    await expect(topBar).not.toBeVisible();
   });
 });

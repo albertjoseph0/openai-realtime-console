@@ -7,6 +7,7 @@ import { onSpotifyPlay } from "./session.js";
 document.addEventListener("DOMContentLoaded", async () => {
   // Gather DOM references
   const dom = {
+    topBar: document.getElementById("top-bar"),
     sessionStopped: document.getElementById("session-stopped"),
     sessionActive: document.getElementById("session-active"),
     connectionButtons: document.getElementById("connection-buttons"),
@@ -40,7 +41,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("Failed to start session:", err);
       dom.startBtn.dataset.activating = "false";
       dom.startBtn.style.backgroundColor = "#4f8cff";
-      dom.startBtn.style.boxShadow = "0 0 30px rgba(79, 140, 255, 0.4)";
+      dom.startBtn.style.boxShadow = "0 0 40px rgba(79, 140, 255, 0.4)";
       dom.startBtn.querySelector(".btn-label").textContent = "Start Session";
     }
   });

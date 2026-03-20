@@ -10,67 +10,40 @@
     <link rel="stylesheet" href="/base.css" />
   </head>
   <body>
-    <div id="root" class="h-full w-full flex flex-col items-center justify-center p-4">
+    <div id="root" class="h-full w-full flex flex-col p-4">
 
-      <!-- Session controls -->
-      <div class="flex-1 flex items-center justify-center w-full">
-        <div class="flex flex-col items-center gap-8">
-
-          <!-- Start Session (shown when inactive) -->
-          <div id="session-stopped" class="flex flex-col items-center justify-center w-full h-full gap-6">
-            <button
-              id="start-session-btn"
-              data-testid="start-session-btn"
-              class="w-40 h-40 rounded-full flex flex-col items-center justify-center gap-2 text-white text-lg font-semibold transition-all duration-200 hover:scale-105 active:scale-95"
-              style="background-color: #4f8cff; box-shadow: 0 0 30px rgba(79, 140, 255, 0.4);"
-            >
-              <!-- Power icon (SVG from react-feather) -->
-              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
-              <span class="btn-label">Start Session</span>
-            </button>
-          </div>
-
-          <!-- Active Session (shown when active) -->
-          <div id="session-active" class="flex flex-col items-center gap-3" style="display: none;">
-            <button
-              id="talk-btn"
-              data-testid="talk-btn"
-              class="w-32 h-32 rounded-full flex flex-col items-center justify-center gap-2 text-white text-base font-semibold transition-all duration-200 active:scale-95"
-              style="background-color: var(--color-accent-green); box-shadow: 0 0 20px rgba(29, 185, 84, 0.3);"
-            >
-              <!-- Mic icon (SVG from react-feather) -->
-              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
-              <span class="btn-label">Talk</span>
-            </button>
-            <button
-              id="disconnect-btn"
-              data-testid="disconnect-btn"
-              class="text-sm px-4 py-2 rounded-full transition-colors"
-              style="color: var(--color-text-muted); background-color: var(--color-surface);"
-            >
-              Disconnect
-            </button>
-          </div>
-
-          <!-- Connection buttons (YouTube / Spotify auth) -->
-          <div id="connection-buttons" data-testid="connection-buttons" class="flex gap-3" style="display: none;">
+      <!-- Top bar: status + controls (hidden until session active) -->
+      <div id="top-bar" class="flex items-center justify-between w-full" style="display: none;">
+        <div class="flex items-center gap-2">
+          <span id="status-dot" class="inline-block w-2 h-2 rounded-full" style="background-color: var(--color-accent-green); animation: pulse-dot 2s ease-in-out infinite;"></span>
+          <span class="text-xs" style="color: var(--color-text-muted);">Connected</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div id="connection-buttons" data-testid="connection-buttons" class="flex gap-2" style="display: none;">
             <a data-testid="connect-youtube" data-auth="youtube" href="/auth/google"
-              class="px-5 py-3 rounded-full text-sm font-medium no-underline transition-colors"
+              class="px-3 py-1.5 rounded-full text-xs font-medium no-underline transition-colors"
               style="background-color: var(--color-surface); color: var(--color-text-muted); border: 1px solid #333;">
-              Connect YouTube
+              YouTube
             </a>
             <a data-testid="connect-spotify" data-auth="spotify" href="/auth/spotify"
-              class="px-5 py-3 rounded-full text-sm font-medium no-underline transition-colors"
+              class="px-3 py-1.5 rounded-full text-xs font-medium no-underline transition-colors"
               style="background-color: var(--color-surface); color: var(--color-text-muted); border: 1px solid #333;">
-              Connect Spotify
+              Spotify
             </a>
           </div>
-
+          <button
+            id="disconnect-btn"
+            data-testid="disconnect-btn"
+            class="px-3 py-1.5 rounded-full text-xs transition-colors"
+            style="color: var(--color-text-muted); background-color: var(--color-surface);"
+          >
+            Disconnect
+          </button>
         </div>
       </div>
 
-      <!-- Media players (shown at bottom when content is playing) -->
-      <div class="w-full flex flex-col items-center gap-4 pb-4">
+      <!-- Media players (shown above button when content is playing) -->
+      <div class="w-full flex flex-col items-center gap-4 py-2">
 
         <!-- YouTube Player -->
         <div class="w-full max-w-md" data-testid="youtube-player" style="display: none;">
@@ -113,6 +86,37 @@
               </div>
             </div>
           </div>
+        </div>
+
+      </div>
+
+      <!-- Giant button zone: fills all remaining space at the bottom -->
+      <div class="flex-1 flex w-full min-h-0 pb-2">
+
+        <!-- Start Session (shown when inactive) -->
+        <div id="session-stopped" class="flex w-full">
+          <button
+            id="start-session-btn"
+            data-testid="start-session-btn"
+            class="w-full flex-1 rounded-2xl flex flex-col items-center justify-center gap-3 text-white text-2xl font-semibold transition-all duration-200 active:scale-[0.98]"
+            style="background-color: #4f8cff; box-shadow: 0 0 40px rgba(79, 140, 255, 0.4);"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+            <span class="btn-label">Start Session</span>
+          </button>
+        </div>
+
+        <!-- Active Session (shown when active) -->
+        <div id="session-active" class="flex w-full" style="display: none;">
+          <button
+            id="talk-btn"
+            data-testid="talk-btn"
+            class="w-full flex-1 rounded-2xl flex flex-col items-center justify-center gap-3 text-white text-2xl font-semibold transition-all duration-200 active:scale-[0.98]"
+            style="background-color: var(--color-accent-green); box-shadow: 0 0 30px rgba(29, 185, 84, 0.3);"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+            <span class="btn-label">Talk</span>
+          </button>
         </div>
 
       </div>
