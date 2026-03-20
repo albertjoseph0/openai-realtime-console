@@ -1,73 +1,62 @@
 import { useState } from "react";
-import { CloudLightning, CloudOff, MessageSquare, Mic } from "react-feather";
-import Button from "./Button";
+import { Mic, Power } from "react-feather";
 
 function SessionStopped({ startSession }) {
   const [isActivating, setIsActivating] = useState(false);
 
   function handleStartSession() {
     if (isActivating) return;
-
     setIsActivating(true);
     startSession();
   }
 
   return (
-    <div className="flex items-center justify-center w-full h-full">
-      <Button
+    <div className="flex flex-col items-center justify-center w-full h-full gap-6">
+      <button
+        data-testid="start-session-btn"
         onClick={handleStartSession}
-        className={isActivating ? "bg-gray-600" : "bg-red-600"}
-        icon={<CloudLightning height={16} />}
+        className="w-40 h-40 rounded-full flex flex-col items-center justify-center gap-2 text-white text-lg font-semibold transition-all duration-200 hover:scale-105 active:scale-95"
+        style={{
+          backgroundColor: isActivating ? "#555" : "#4f8cff",
+          boxShadow: isActivating ? "none" : "0 0 30px rgba(79, 140, 255, 0.4)",
+        }}
       >
-        {isActivating ? "starting session..." : "start session"}
-      </Button>
+        <Power size={32} />
+        {isActivating ? "Connecting..." : "Start Session"}
+      </button>
     </div>
   );
 }
 
-function SessionActive({ stopSession, sendTextMessage, isTalking, startTalking }) {
-  const [message, setMessage] = useState("");
-
-  function handleSendClientEvent() {
-    sendTextMessage(message);
-    setMessage("");
-  }
-
+function SessionActive({ stopSession, isTalking, startTalking }) {
   return (
-    <div className="flex items-center justify-center w-full h-full gap-4">
-      <Button
+    <div className="flex flex-col items-center gap-3">
+      <button
+        data-testid="talk-btn"
         onClick={startTalking}
-        icon={<Mic height={16} />}
-        className={isTalking ? "bg-red-500 animate-pulse" : "bg-green-500"}
-      >
-        {isTalking ? "listening..." : "talk"}
-      </Button>
-      <input
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && message.trim()) {
-            handleSendClientEvent();
-          }
+        className="w-32 h-32 rounded-full flex flex-col items-center justify-center gap-2 text-white text-base font-semibold transition-all duration-200 active:scale-95"
+        style={{
+          backgroundColor: isTalking ? "var(--color-accent-red)" : "var(--color-accent-green)",
+          animation: isTalking ? "pulse-glow 1.5s ease-in-out infinite" : "none",
+          boxShadow: isTalking
+            ? "0 0 30px rgba(255, 68, 68, 0.5)"
+            : "0 0 20px rgba(29, 185, 84, 0.3)",
         }}
-        type="text"
-        placeholder="send a text message..."
-        className="border border-gray-200 rounded-full p-4 flex-1"
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-      />
-      <Button
-        onClick={() => {
-          if (message.trim()) {
-            handleSendClientEvent();
-          }
-        }}
-        icon={<MessageSquare height={16} />}
-        className="bg-blue-400"
       >
-        send text
-      </Button>
-      <Button onClick={stopSession} icon={<CloudOff height={16} />}>
-        disconnect
-      </Button>
+        <Mic size={28} />
+        {isTalking ? "Listening..." : "Talk"}
+      </button>
+      <button
+        data-testid="disconnect-btn"
+        onClick={stopSession}
+        className="text-sm px-4 py-2 rounded-full transition-colors"
+        style={{
+          color: "var(--color-text-muted)",
+          backgroundColor: "var(--color-surface)",
+        }}
+      >
+        Disconnect
+      </button>
     </div>
   );
 }
@@ -75,27 +64,17 @@ function SessionActive({ stopSession, sendTextMessage, isTalking, startTalking }
 export default function SessionControls({
   startSession,
   stopSession,
-  sendClientEvent,
-  sendTextMessage,
-  serverEvents,
   isSessionActive,
   isTalking,
   startTalking,
 }) {
-  return (
-    <div className="flex gap-4 border-t-2 border-gray-200 h-full rounded-md">
-      {isSessionActive ? (
-        <SessionActive
-          stopSession={stopSession}
-          sendClientEvent={sendClientEvent}
-          sendTextMessage={sendTextMessage}
-          serverEvents={serverEvents}
-          isTalking={isTalking}
-          startTalking={startTalking}
-        />
-      ) : (
-        <SessionStopped startSession={startSession} />
-      )}
-    </div>
+  return isSessionActive ? (
+    <SessionActive
+      stopSession={stopSession}
+      isTalking={isTalking}
+      startTalking={startTalking}
+    />
+  ) : (
+    <SessionStopped startSession={startSession} />
   );
 }

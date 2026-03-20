@@ -243,32 +243,6 @@ const sessionUpdate = {
   },
 };
 
-function FunctionCallOutput({ functionCallOutput }) {
-  const { theme, colors } = JSON.parse(functionCallOutput.arguments);
-
-  const colorBoxes = colors.map((color) => (
-    <div
-      key={color}
-      className="w-full h-16 rounded-md flex items-center justify-center border border-gray-200"
-      style={{ backgroundColor: color }}
-    >
-      <p className="text-sm font-bold text-black bg-slate-100 rounded-md p-2 border border-black">
-        {color}
-      </p>
-    </div>
-  ));
-
-  return (
-    <div className="flex flex-col gap-2">
-      <p>Theme: {theme}</p>
-      {colorBoxes}
-      <pre className="text-xs bg-gray-100 rounded-md p-2 overflow-x-auto">
-        {JSON.stringify(functionCallOutput, null, 2)}
-      </pre>
-    </div>
-  );
-}
-
 export default function ToolPanel({
   isSessionActive,
   sendClientEvent,
@@ -279,14 +253,12 @@ export default function ToolPanel({
   spotifyAuthenticated,
   setSpotifyAuthenticated,
   onSpotifyPlay,
+  ytAuthenticated,
+  setYtAuthenticated,
 }) {
   const [functionAdded, setFunctionAdded] = useState(false);
-  const [functionCallOutput, setFunctionCallOutput] = useState(null);
   const [currentVideo, setCurrentVideo] = useState(null);
-  const [ytAuthenticated, setYtAuthenticated] = useState(false);
-  const [spotifyTrack, setSpotifyTrack] = useState(null);
 
-  // Resolve a working Spotify device ID from the user's available devices
   async function resolveSpotifyDeviceId() {
     try {
       const res = await fetch("/spotify/devices");
@@ -300,14 +272,6 @@ export default function ToolPanel({
       return null;
     }
   }
-
-  // Check YouTube auth status on mount
-  useEffect(() => {
-    fetch("/auth/google/status")
-      .then((r) => r.json())
-      .then((data) => setYtAuthenticated(data.authenticated))
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (!events || events.length === 0) return;
@@ -328,7 +292,6 @@ export default function ToolPanel({
           output.type === "function_call" &&
           output.name === "display_color_palette"
         ) {
-          setFunctionCallOutput(output);
           setTimeout(() => {
             sendClientEvent({
               type: "response.create",
@@ -428,7 +391,6 @@ export default function ToolPanel({
         setCurrentVideo({ videoId: data.videoId, title: data.title });
         onMediaPlay();
 
-        // Send function result back to the model
         sendClientEvent({
           type: "conversation.item.create",
           item: {
@@ -760,7 +722,6 @@ export default function ToolPanel({
       const data = await response.json();
 
       if (data.found) {
-        // Play on the Web Playback SDK device or fallback
         const deviceId = await resolveSpotifyDeviceId();
         const playRes = await fetch("/spotify/play", {
           method: "PUT",
@@ -772,7 +733,6 @@ export default function ToolPanel({
         });
 
         if (playRes.ok) {
-          setSpotifyTrack(data);
           onSpotifyPlay();
           sendFunctionResult(output.call_id, {
             status: "playing",
@@ -846,7 +806,6 @@ export default function ToolPanel({
         });
 
         if (playRes.ok) {
-          setSpotifyTrack({ name: data.name, artist: data.owner, album: "Playlist" });
           onSpotifyPlay();
           sendFunctionResult(output.call_id, {
             status: "playing",
@@ -923,7 +882,6 @@ export default function ToolPanel({
         });
 
         if (playRes.ok) {
-          setSpotifyTrack({ name: match.name, artist: match.owner, album: "Playlist" });
           onSpotifyPlay();
           sendFunctionResult(output.call_id, {
             status: "playing",
@@ -978,7 +936,6 @@ export default function ToolPanel({
         return "Went to previous track";
       },
       spotify_pause: async () => {
-        // Toggle: check current state
         try {
           const res = await fetch("/spotify/currently-playing");
           const data = await res.json();
@@ -1042,116 +999,36 @@ export default function ToolPanel({
   useEffect(() => {
     if (!isSessionActive) {
       setFunctionAdded(false);
-      setFunctionCallOutput(null);
       setCurrentVideo(null);
-      setSpotifyTrack(null);
     }
   }, [isSessionActive]);
 
-  function handleYouTubeLogout() {
-    fetch("/auth/google/logout", { method: "POST" })
-      .then(() => setYtAuthenticated(false))
-      .catch(() => {});
-  }
-
-  function handleSpotifyLogout() {
-    fetch("/auth/spotify/logout", { method: "POST" })
-      .then(() => setSpotifyAuthenticated(false))
-      .catch(() => {});
-  }
-
+  // Only render the media players when content is playing
   return (
-    <section className="h-full w-full flex flex-col gap-4">
-      <div className="bg-gray-50 rounded-md p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-bold">Media Player</h2>
-          {ytAuthenticated ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-green-600 font-medium">YouTube ✓</span>
-              <button
-                onClick={handleYouTubeLogout}
-                className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
-              >
-                Sign out
-              </button>
-            </div>
-          ) : (
-            <a
-              href="/auth/google"
-              className="text-xs px-2 py-1 rounded border border-blue-500 text-blue-600 hover:bg-blue-50 no-underline"
-            >
-              Sign in with YouTube
-            </a>
-          )}
+    <>
+      {currentVideo && (
+        <div className="w-full max-w-md" data-testid="youtube-player">
+          <MediaPlayer
+            ref={mediaPlayerRef}
+            videoId={currentVideo.videoId}
+            playlistId={currentVideo.playlistId}
+            title={currentVideo.title}
+            onClose={() => setCurrentVideo(null)}
+          />
         </div>
-        {isSessionActive ? (
-          currentVideo ? (
-            <MediaPlayer
-              ref={mediaPlayerRef}
-              videoId={currentVideo.videoId}
-              playlistId={currentVideo.playlistId}
-              title={currentVideo.title}
-              onClose={() => setCurrentVideo(null)}
-            />
-          ) : (
-            <p>Ask to play a song, video, or playlist...</p>
-          )
-        ) : (
-          <p>Start the session to use this tool...</p>
-        )}
-      </div>
-      <div className="bg-gray-50 rounded-md p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-bold">🎵 Spotify</h2>
-          {spotifyAuthenticated ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-green-600 font-medium">Spotify ✓</span>
-              <button
-                onClick={handleSpotifyLogout}
-                className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
-              >
-                Sign out
-              </button>
-            </div>
-          ) : (
-            <a
-              href="/auth/spotify"
-              className="text-xs px-2 py-1 rounded border border-green-500 text-green-600 hover:bg-green-50 no-underline"
-            >
-              Sign in with Spotify
-            </a>
-          )}
+      )}
+      {isSessionActive && spotifyAuthenticated && (
+        <div className="w-full max-w-md" data-testid="spotify-player">
+          <SpotifyPlayer
+            ref={spotifyPlayerRef}
+            onClose={() => {}}
+            onTrackChange={() => {}}
+            onPlayStateChange={(isPlaying) => {
+              if (isPlaying) onSpotifyPlay?.();
+            }}
+          />
         </div>
-        {isSessionActive ? (
-          spotifyAuthenticated ? (
-            <SpotifyPlayer
-              ref={spotifyPlayerRef}
-              onClose={() => setSpotifyTrack(null)}
-              onTrackChange={(track) => setSpotifyTrack(track)}
-              onPlayStateChange={(isPlaying) => {
-                if (isPlaying) onSpotifyPlay?.();
-              }}
-            />
-          ) : (
-            <p className="text-sm text-gray-500">Sign in with Spotify to control playback (Premium required for playback control)</p>
-          )
-        ) : (
-          <p>Start the session to use Spotify...</p>
-        )}
-        {isSessionActive && spotifyAuthenticated && !spotifyTrack && (
-          <p className="text-sm mt-1">Ask to play a song or playlist on Spotify...</p>
-        )}
-      </div>
-      <div className="bg-gray-50 rounded-md p-4">
-        <h2 className="text-lg font-bold">Color Palette Tool</h2>
-        {isSessionActive
-          ? (
-            functionCallOutput
-              ? <FunctionCallOutput functionCallOutput={functionCallOutput} />
-              : <p>Ask for advice on a color palette...</p>
-          )
-          : <p>Start the session to use this tool...</p>}
-      </div>
-    </section>
+      )}
+    </>
   );
 }

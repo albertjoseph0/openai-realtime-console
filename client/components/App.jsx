@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import logo from "/assets/openai-logomark.svg";
-import EventLog from "./EventLog";
 import SessionControls from "./SessionControls";
 import ToolPanel from "./ToolPanel";
 
@@ -15,44 +13,41 @@ export default function App() {
   const mediaPlayerRef = useRef(null);
   const spotifyPlayerRef = useRef(null);
   const [spotifyAuthenticated, setSpotifyAuthenticated] = useState(false);
+  const [ytAuthenticated, setYtAuthenticated] = useState(false);
 
-  // Check Spotify auth status on mount
+  // Check auth status on mount
   useEffect(() => {
     fetch("/auth/spotify/status")
       .then((r) => r.json())
       .then((data) => setSpotifyAuthenticated(data.authenticated))
       .catch(() => {});
+    fetch("/auth/google/status")
+      .then((r) => r.json())
+      .then((data) => setYtAuthenticated(data.authenticated))
+      .catch(() => {});
   }, []);
 
   async function startSession() {
-    // Get an ephemeral token and Azure endpoint for the Realtime API
     const tokenResponse = await fetch("/token");
     const data = await tokenResponse.json();
     const EPHEMERAL_KEY = data.value;
     const endpoint = data.endpoint;
 
-    // Create a peer connection
     const pc = new RTCPeerConnection();
 
-    // Set up to play remote audio from the model
     audioElement.current = document.createElement("audio");
     audioElement.current.autoplay = true;
     pc.ontrack = (e) => (audioElement.current.srcObject = e.streams[0]);
 
-    // Add local audio track for microphone input in the browser
-    const ms = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-    });
+    const ms = await navigator.mediaDevices.getUserMedia({ audio: true });
     const track = ms.getTracks()[0];
-    track.enabled = false; // Start muted
+    track.enabled = false;
     micTrack.current = track;
     pc.addTrack(track);
 
-    // Set up data channel for sending and receiving events
     const dc = pc.createDataChannel("oai-events");
     setDataChannel(dc);
 
-    // Start the session using the Session Description Protocol (SDP)
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
@@ -83,19 +78,16 @@ export default function App() {
     setIsTalking(true);
   }
 
-  // Called by ToolPanel when a YouTube video starts playing
   function onMediaPlay() {
     if (micTrack.current) micTrack.current.enabled = false;
     setIsTalking(false);
   }
 
-  // Called by ToolPanel when Spotify starts playing
   function onSpotifyPlay() {
     if (micTrack.current) micTrack.current.enabled = false;
     setIsTalking(false);
   }
 
-  // Stop current session, clean up peer connection and data channel
   function stopSession() {
     if (dataChannel) {
       dataChannel.close();
@@ -118,59 +110,28 @@ export default function App() {
     micTrack.current = null;
   }
 
-  // Send a message to the model
   function sendClientEvent(message) {
     if (dataChannel) {
       const timestamp = new Date().toLocaleTimeString();
       message.event_id = message.event_id || crypto.randomUUID();
-
-      // send event before setting timestamp since the backend peer doesn't expect this field
       dataChannel.send(JSON.stringify(message));
-
-      // if guard just in case the timestamp exists by miracle
       if (!message.timestamp) {
         message.timestamp = timestamp;
       }
       setEvents((prev) => [message, ...prev]);
     } else {
-      console.error(
-        "Failed to send message - no data channel available",
-        message,
-      );
+      console.error("Failed to send message - no data channel available", message);
     }
   }
 
-  // Send a text message to the model
-  function sendTextMessage(message) {
-    const event = {
-      type: "conversation.item.create",
-      item: {
-        type: "message",
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: message,
-          },
-        ],
-      },
-    };
-
-    sendClientEvent(event);
-    sendClientEvent({ type: "response.create" });
-  }
-
-  // Attach event listeners to the data channel when a new one is created
   useEffect(() => {
     if (dataChannel) {
-      // Append new server events to the list
       dataChannel.addEventListener("message", (e) => {
         const event = JSON.parse(e.data);
         if (!event.timestamp) {
           event.timestamp = new Date().toLocaleTimeString();
         }
 
-        // Log conversation events for debugging
         if (event.type === "conversation.item.input_audio_transcription.completed") {
           console.log("[USER SPEECH]", event.transcript);
         }
@@ -188,7 +149,6 @@ export default function App() {
         setEvents((prev) => [event, ...prev]);
       });
 
-      // Set session active when the data channel is opened
       dataChannel.addEventListener("open", () => {
         setIsSessionActive(true);
         setEvents([]);
@@ -196,47 +156,110 @@ export default function App() {
     }
   }, [dataChannel]);
 
+  function handleYouTubeLogout() {
+    fetch("/auth/google/logout", { method: "POST" })
+      .then(() => setYtAuthenticated(false))
+      .catch(() => {});
+  }
+
+  function handleSpotifyLogout() {
+    fetch("/auth/spotify/logout", { method: "POST" })
+      .then(() => setSpotifyAuthenticated(false))
+      .catch(() => {});
+  }
+
   return (
-    <>
-      <nav className="absolute top-0 left-0 right-0 h-16 flex items-center">
-        <div className="flex items-center gap-4 w-full m-4 pb-2 border-0 border-b border-solid border-gray-200">
-          <img style={{ width: "24px" }} src={logo} />
-          <h1>realtime console</h1>
-        </div>
-      </nav>
-      <main className="absolute top-16 left-0 right-0 bottom-0">
-        <section className="absolute top-0 left-0 right-[380px] bottom-0 flex">
-          <section className="absolute top-0 left-0 right-0 bottom-32 px-4 overflow-y-auto">
-            <EventLog events={events} />
-          </section>
-          <section className="absolute h-32 left-0 right-0 bottom-0 p-4">
-            <SessionControls
-              startSession={startSession}
-              stopSession={stopSession}
-              sendClientEvent={sendClientEvent}
-              sendTextMessage={sendTextMessage}
-              events={events}
-              isSessionActive={isSessionActive}
-              isTalking={isTalking}
-              startTalking={startTalking}
-            />
-          </section>
-        </section>
-        <section className="absolute top-0 w-[380px] right-0 bottom-0 p-4 pt-0 overflow-y-auto">
-          <ToolPanel
-            sendClientEvent={sendClientEvent}
-            sendTextMessage={sendTextMessage}
-            events={events}
+    <div className="h-full w-full flex flex-col items-center justify-center p-4">
+      {/* Session controls — either start button or talk + disconnect */}
+      <div className="flex-1 flex items-center justify-center w-full">
+        <div className="flex flex-col items-center gap-8">
+          <SessionControls
+            startSession={startSession}
+            stopSession={stopSession}
             isSessionActive={isSessionActive}
-            mediaPlayerRef={mediaPlayerRef}
-            onMediaPlay={onMediaPlay}
-            spotifyPlayerRef={spotifyPlayerRef}
-            spotifyAuthenticated={spotifyAuthenticated}
-            setSpotifyAuthenticated={setSpotifyAuthenticated}
-            onSpotifyPlay={onSpotifyPlay}
+            isTalking={isTalking}
+            startTalking={startTalking}
           />
-        </section>
-      </main>
-    </>
+
+          {/* Connection buttons — only shown when session is active */}
+          {isSessionActive && (
+            <div className="flex gap-3" data-testid="connection-buttons">
+              {ytAuthenticated ? (
+                <button
+                  data-testid="youtube-connected"
+                  onClick={handleYouTubeLogout}
+                  className="px-5 py-3 rounded-full text-sm font-medium transition-colors"
+                  style={{
+                    backgroundColor: "rgba(255, 0, 0, 0.15)",
+                    color: "#ff4444",
+                    border: "1px solid rgba(255, 0, 0, 0.3)",
+                  }}
+                >
+                  YouTube ✓
+                </button>
+              ) : (
+                <a
+                  data-testid="connect-youtube"
+                  href="/auth/google"
+                  className="px-5 py-3 rounded-full text-sm font-medium no-underline transition-colors"
+                  style={{
+                    backgroundColor: "var(--color-surface)",
+                    color: "var(--color-text-muted)",
+                    border: "1px solid #333",
+                  }}
+                >
+                  Connect YouTube
+                </a>
+              )}
+
+              {spotifyAuthenticated ? (
+                <button
+                  data-testid="spotify-connected"
+                  onClick={handleSpotifyLogout}
+                  className="px-5 py-3 rounded-full text-sm font-medium transition-colors"
+                  style={{
+                    backgroundColor: "rgba(29, 185, 84, 0.15)",
+                    color: "#1db954",
+                    border: "1px solid rgba(29, 185, 84, 0.3)",
+                  }}
+                >
+                  Spotify ✓
+                </button>
+              ) : (
+                <a
+                  data-testid="connect-spotify"
+                  href="/auth/spotify"
+                  className="px-5 py-3 rounded-full text-sm font-medium no-underline transition-colors"
+                  style={{
+                    backgroundColor: "var(--color-surface)",
+                    color: "var(--color-text-muted)",
+                    border: "1px solid #333",
+                  }}
+                >
+                  Connect Spotify
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Media players — shown at bottom when content is playing */}
+      <div className="w-full flex flex-col items-center gap-4 pb-4">
+        <ToolPanel
+          sendClientEvent={sendClientEvent}
+          events={events}
+          isSessionActive={isSessionActive}
+          mediaPlayerRef={mediaPlayerRef}
+          onMediaPlay={onMediaPlay}
+          spotifyPlayerRef={spotifyPlayerRef}
+          spotifyAuthenticated={spotifyAuthenticated}
+          setSpotifyAuthenticated={setSpotifyAuthenticated}
+          onSpotifyPlay={onSpotifyPlay}
+          ytAuthenticated={ytAuthenticated}
+          setYtAuthenticated={setYtAuthenticated}
+        />
+      </div>
+    </div>
   );
 }
