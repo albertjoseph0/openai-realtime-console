@@ -35,15 +35,12 @@ Call this function when a user asks to see or list their YouTube playlists.
 This requires the user to be signed in with YouTube.
 `;
 
-const spotifyPlayTrackDescription = `
-Call this function when a user asks to play a specific song or track on Spotify.
-Extract the song name, artist, or search query from their request.
-The user may say things like "play X on Spotify" or "use Spotify to play X".
-`;
-
-const spotifyPlayPlaylistDescription = `
-Call this function when a user asks to play a playlist on Spotify.
-Extract the playlist name or description from their request.
+const spotifyPlayDescription = `
+Call this function when a user asks to play music, an artist, album, playlist, or podcast on Spotify.
+Set type to "auto" unless the user clearly specifies a content type (e.g., "play the album X" → type "album", "play X playlist" → type "playlist", "play the podcast X" → type "podcast").
+For artist requests like "play Miles Davis on Spotify", set type to "auto" or "artist".
+Set resume to true ONLY if the user explicitly wants to continue a podcast where they left off; otherwise always set resume to false.
+Extract only the core search terms — do not add extra words like "The" or "podcast" or "playlist" to the query.
 `;
 
 const spotifyPlayMyPlaylistDescription = `
@@ -56,12 +53,6 @@ const spotifyPreviousDescription = `Go back to the previous track on Spotify.`;
 const spotifyPauseDescription = `Pause or resume Spotify playback.`;
 const spotifyShuffleDescription = `Toggle shuffle mode on Spotify.`;
 
-const spotifyPlayPodcastDescription = `
-Call this function when a user asks to play a podcast on Spotify, or resume a podcast they were previously listening to.
-Extract only the podcast name from their request — do not add extra words like "The" or "podcast" to the query. For example, if the user says "play the Cheeky Pint podcast", set query to "Cheeky Pint".
-Set resume to true if the user wants to continue where they left off.
-`;
-
 // ── Session update payload ──
 
 const sessionUpdate = {
@@ -71,7 +62,7 @@ const sessionUpdate = {
     instructions:
       "CRITICAL RULE FOR MEDIA TOOLS: When you call ANY media or playback tool " +
       "(play_media, play_playlist, play_my_playlist, play_liked_videos, next_track, previous_track, shuffle_playlist, " +
-      "spotify_play_track, spotify_play_playlist, spotify_play_my_playlist, spotify_play_podcast, " +
+      "spotify_play, spotify_play_my_playlist, " +
       "spotify_next_track, spotify_previous_track, spotify_pause, spotify_shuffle), " +
       "you MUST output ONLY the function call with NO accompanying spoken message. " +
       "Do NOT say things like 'let me find that', 'playing now', 'I\\'ll look for that', or anything similar. " +
@@ -184,8 +175,8 @@ const sessionUpdate = {
       },
       {
         type: "function",
-        name: "spotify_play_track",
-        description: spotifyPlayTrackDescription,
+        name: "spotify_play",
+        description: spotifyPlayDescription,
         parameters: {
           type: "object",
           strict: true,
@@ -193,27 +184,21 @@ const sessionUpdate = {
           properties: {
             query: {
               type: "string",
-              description: "Search query for the song or track. Include artist name if mentioned.",
+              description: "Search query — song name, artist, album, playlist name, genre, or podcast name. Include artist name if relevant.",
             },
-          },
-          required: ["query"],
-        },
-      },
-      {
-        type: "function",
-        name: "spotify_play_playlist",
-        description: spotifyPlayPlaylistDescription,
-        parameters: {
-          type: "object",
-          strict: true,
-          additionalProperties: false,
-          properties: {
-            query: {
+            type: {
               type: "string",
-              description: "Name or description of the Spotify playlist to search for.",
+              enum: ["track", "artist", "album", "playlist", "podcast", "auto"],
+              description:
+                "Content type to search. Use 'auto' when the user doesn't specify — it searches all types and picks the best match.",
+            },
+            resume: {
+              type: "boolean",
+              description:
+                "Only for podcasts: true to resume where the user left off, false to play the latest episode. Always set to false for non-podcast requests.",
             },
           },
-          required: ["query"],
+          required: ["query", "type", "resume"],
         },
       },
       {
@@ -256,28 +241,6 @@ const sessionUpdate = {
         name: "spotify_shuffle",
         description: spotifyShuffleDescription,
         parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
-      },
-      {
-        type: "function",
-        name: "spotify_play_podcast",
-        description: spotifyPlayPodcastDescription,
-        parameters: {
-          type: "object",
-          strict: true,
-          additionalProperties: false,
-          properties: {
-            query: {
-              type: "string",
-              description: "Name of the podcast show to search for.",
-            },
-            resume: {
-              type: "boolean",
-              description:
-                "If true, resumes the most recently started but unfinished episode. If false, plays the latest episode from the beginning.",
-            },
-          },
-          required: ["query", "resume"],
-        },
       },
     ],
     tool_choice: "auto",
@@ -328,14 +291,12 @@ export const initTools = {
         play_my_playlist: handlePlayMyPlaylist,
         play_liked_videos: handlePlayLikedVideos,
         list_my_playlists: handleListMyPlaylists,
-        spotify_play_track: handleSpotifyPlayTrack,
-        spotify_play_playlist: handleSpotifyPlayPlaylist,
+        spotify_play: handleSpotifyPlay,
         spotify_play_my_playlist: handleSpotifyPlayMyPlaylist,
         spotify_next_track: handleSpotifyPlaybackControl,
         spotify_previous_track: handleSpotifyPlaybackControl,
         spotify_pause: handleSpotifyPlaybackControl,
         spotify_shuffle: handleSpotifyPlaybackControl,
-        spotify_play_podcast: handleSpotifyPlayPodcast,
       };
 
       const functionCalls = event.response.output.filter(
@@ -712,10 +673,10 @@ async function handleListMyPlaylists(output) {
 
 // ── Spotify handlers ──
 
-async function handleSpotifyPlayTrack(output) {
+async function handleSpotifyPlay(output) {
   const args = parseArguments(output);
   if (!args) return { needsResponse: true };
-  const { query } = args;
+  const { query, type, resume } = args;
   const { spotifyAuthenticated } = getState();
 
   if (!spotifyAuthenticated) {
@@ -727,7 +688,14 @@ async function handleSpotifyPlayTrack(output) {
   }
 
   try {
-    const response = await fetch(`/spotify/search?q=${encodeURIComponent(query)}&type=track`);
+    // Podcasts use a separate flow (episode fetching + resume logic)
+    if (type === "podcast") {
+      return await handleSpotifyPodcastFlow(output.call_id, query, resume);
+    }
+
+    const searchType = type === "auto" ? "auto" : type;
+    console.log(`[TOOL CALL] spotify_play(${JSON.stringify({ query, type: searchType })})`);
+    const response = await fetch(`/spotify/search?q=${encodeURIComponent(query)}&type=${searchType}`);
     if (response.status === 401) {
       setSpotifyAuthenticated(false);
       sendFunctionResult(output.call_id, {
@@ -741,20 +709,27 @@ async function handleSpotifyPlayTrack(output) {
 
     if (data.found) {
       const deviceId = await resolveSpotifyDeviceId();
+      // Tracks use uris array; artist/album/playlist use context_uri
+      const playBody = data.type === "track"
+        ? { uris: [data.uri], device_id: deviceId }
+        : { context_uri: data.uri, device_id: deviceId };
+
       const playRes = await fetch("/spotify/play", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uris: [data.uri], device_id: deviceId }),
+        body: JSON.stringify(playBody),
       });
 
       if (playRes.ok) {
         onSpotifyPlay();
-        sendFunctionResult(output.call_id, {
-          status: "playing",
-          name: data.name,
-          artist: data.artist,
-          album: data.album,
-        });
+        const result = { status: "playing", type: data.type, name: data.name };
+        if (data.artist) result.artist = data.artist;
+        if (data.album) result.album = data.album;
+        if (data.owner) result.owner = data.owner;
+        if (data.trackCount) result.trackCount = data.trackCount;
+        if (data.totalTracks) result.totalTracks = data.totalTracks;
+        if (data.genres) result.genres = data.genres;
+        sendFunctionResult(output.call_id, result);
         return { needsResponse: false };
       } else {
         sendFunctionResult(output.call_id, {
@@ -766,12 +741,12 @@ async function handleSpotifyPlayTrack(output) {
     } else {
       sendFunctionResult(output.call_id, {
         status: "not_found",
-        message: `No Spotify tracks found for "${query}"`,
+        message: `No Spotify results found for "${query}"${type !== "auto" ? ` (type: ${type})` : ""}`,
       });
       return { needsResponse: true };
     }
   } catch (error) {
-    console.error("Spotify play track failed:", error);
+    console.error("Spotify play failed:", error);
     sendFunctionResult(output.call_id, {
       status: "error",
       message: "Failed to search and play on Spotify.",
@@ -780,70 +755,96 @@ async function handleSpotifyPlayTrack(output) {
   }
 }
 
-async function handleSpotifyPlayPlaylist(output) {
-  const args = parseArguments(output);
-  if (!args) return { needsResponse: true };
-  const { query } = args;
-  const { spotifyAuthenticated } = getState();
-
-  if (!spotifyAuthenticated) {
-    sendFunctionResult(output.call_id, {
-      status: "not_authenticated",
-      message: "Please sign in with Spotify first.",
-    });
-    return { needsResponse: true };
-  }
-
+// Podcast-specific flow: search show → fetch episodes → handle resume
+async function handleSpotifyPodcastFlow(callId, query, resume) {
   try {
-    const response = await fetch(`/spotify/search?q=${encodeURIComponent(query)}&type=playlist`);
-    if (response.status === 401) {
+    console.log(`[Podcast] Searching for show: "${query}" (resume=${resume})`);
+    const searchRes = await fetch(`/spotify/search?q=${encodeURIComponent(query)}&type=show`);
+    if (searchRes.status === 401) {
       setSpotifyAuthenticated(false);
-      sendFunctionResult(output.call_id, {
+      sendFunctionResult(callId, {
         status: "not_authenticated",
         message: "Spotify session expired. Please sign in again.",
       });
       return { needsResponse: true };
     }
-
-    const data = await response.json();
-
-    if (data.found) {
-      const deviceId = await resolveSpotifyDeviceId();
-      const playRes = await fetch("/spotify/play", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ context_uri: data.uri, device_id: deviceId }),
+    const searchData = await searchRes.json();
+    console.log(`[Podcast] Search result:`, JSON.stringify(searchData));
+    if (!searchData.found) {
+      sendFunctionResult(callId, {
+        status: "not_found",
+        message: `Could not find a podcast called "${query}" on Spotify.`,
       });
+      return { needsResponse: true };
+    }
 
-      if (playRes.ok) {
-        onSpotifyPlay();
-        sendFunctionResult(output.call_id, {
-          status: "playing",
-          name: data.name,
-          owner: data.owner,
-          trackCount: data.trackCount,
-          type: "playlist",
-        });
-        return { needsResponse: false };
+    const showId = searchData.id;
+    const showName = searchData.name;
+    console.log(`[Podcast] Found show: "${showName}" (id=${showId})`);
+
+    const episodeLimit = resume ? 10 : 1;
+    const epRes = await fetch(`/spotify/shows/${showId}/episodes?limit=${episodeLimit}`);
+    const epData = await epRes.json();
+    const episodes = epData.episodes || [];
+    console.log(`[Podcast] Got ${episodes.length} episodes:`, episodes.map(e => e.name));
+
+    if (episodes.length === 0) {
+      sendFunctionResult(callId, {
+        status: "no_episodes",
+        message: `The podcast "${showName}" has no available episodes.`,
+      });
+      return { needsResponse: true };
+    }
+
+    let targetEpisode = null;
+    let resumed = false;
+
+    if (resume) {
+      targetEpisode = episodes.find(
+        (ep) =>
+          ep.resumePoint &&
+          !ep.resumePoint.fully_played &&
+          ep.resumePoint.resume_position_ms > 0,
+      );
+      if (targetEpisode) {
+        resumed = true;
       } else {
-        sendFunctionResult(output.call_id, {
-          status: "error",
-          message: "Failed to start playlist playback.",
-        });
-        return { needsResponse: true };
+        targetEpisode = episodes[0];
       }
     } else {
-      sendFunctionResult(output.call_id, {
-        status: "not_found",
-        message: `No Spotify playlist found for "${query}"`,
+      targetEpisode = episodes[0];
+    }
+
+    const deviceId = await resolveSpotifyDeviceId();
+    const playRes = await fetch("/spotify/play", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uris: [targetEpisode.uri], device_id: deviceId }),
+    });
+
+    if (playRes.ok) {
+      onSpotifyPlay();
+      sendFunctionResult(callId, {
+        status: "playing",
+        show: showName,
+        episode: targetEpisode.name,
+        releaseDate: targetEpisode.releaseDate,
+        resumed,
+      });
+      return { needsResponse: false };
+    } else {
+      const errData = await playRes.json().catch(() => ({}));
+      sendFunctionResult(callId, {
+        status: "error",
+        message: errData.error || "Failed to play podcast episode.",
       });
       return { needsResponse: true };
     }
   } catch (error) {
-    console.error("Spotify play playlist failed:", error);
-    sendFunctionResult(output.call_id, {
+    console.error("Spotify play podcast failed:", error);
+    sendFunctionResult(callId, {
       status: "error",
-      message: "Failed to search and play playlist on Spotify.",
+      message: "Failed to play podcast. Please try again.",
     });
     return { needsResponse: true };
   }
@@ -986,123 +987,6 @@ async function handleSpotifyPlaybackControl(output) {
     sendFunctionResult(output.call_id, {
       status: "error",
       message: `Failed to execute ${output.name}`,
-    });
-    return { needsResponse: true };
-  }
-}
-
-async function handleSpotifyPlayPodcast(output) {
-  const args = parseArguments(output);
-  if (!args) return { needsResponse: true };
-  const { query, resume } = args;
-  const { spotifyAuthenticated } = getState();
-
-  if (!spotifyAuthenticated) {
-    sendFunctionResult(output.call_id, {
-      status: "not_authenticated",
-      message: "Please sign in with Spotify first using the button in the Spotify panel.",
-    });
-    return { needsResponse: true };
-  }
-
-  try {
-    // Search for the podcast show
-    console.log(`[Podcast] Searching for show: "${query}" (resume=${resume})`);
-    const searchRes = await fetch(`/spotify/search?q=${encodeURIComponent(query)}&type=show`);
-    if (searchRes.status === 401) {
-      setSpotifyAuthenticated(false);
-      sendFunctionResult(output.call_id, {
-        status: "not_authenticated",
-        message: "Spotify session expired. Please sign in again.",
-      });
-      return { needsResponse: true };
-    }
-    const searchData = await searchRes.json();
-    console.log(`[Podcast] Search result:`, JSON.stringify(searchData));
-    if (!searchData.found) {
-      sendFunctionResult(output.call_id, {
-        status: "not_found",
-        message: `Could not find a podcast called "${query}" on Spotify.`,
-      });
-      return { needsResponse: true };
-    }
-
-    const showId = searchData.id;
-    const showName = searchData.name;
-    console.log(`[Podcast] Found show: "${showName}" (id=${showId})`);
-
-    // Fetch episodes (more if resuming to find an in-progress one)
-    const episodeLimit = resume ? 10 : 1;
-    const epRes = await fetch(`/spotify/shows/${showId}/episodes?limit=${episodeLimit}`);
-    const epData = await epRes.json();
-    const episodes = epData.episodes || [];
-    console.log(`[Podcast] Got ${episodes.length} episodes:`, episodes.map(e => e.name));
-
-    if (episodes.length === 0) {
-      sendFunctionResult(output.call_id, {
-        status: "no_episodes",
-        message: `The podcast "${showName}" has no available episodes.`,
-      });
-      return { needsResponse: true };
-    }
-
-    let targetEpisode = null;
-    let resumed = false;
-
-    if (resume) {
-      // Find the most recent episode that has been started but not finished
-      targetEpisode = episodes.find(
-        (ep) =>
-          ep.resumePoint &&
-          !ep.resumePoint.fully_played &&
-          ep.resumePoint.resume_position_ms > 0,
-      );
-      if (targetEpisode) {
-        resumed = true;
-      } else {
-        // No in-progress episode found — fall back to the latest
-        targetEpisode = episodes[0];
-      }
-    } else {
-      targetEpisode = episodes[0];
-    }
-
-    // Play the episode — Spotify natively resumes podcast position
-    const deviceId = await resolveSpotifyDeviceId();
-    const playBody = {
-      uris: [targetEpisode.uri],
-      device_id: deviceId,
-    };
-
-    const playRes = await fetch("/spotify/play", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(playBody),
-    });
-
-    if (playRes.ok) {
-      onSpotifyPlay();
-      sendFunctionResult(output.call_id, {
-        status: "playing",
-        show: showName,
-        episode: targetEpisode.name,
-        releaseDate: targetEpisode.releaseDate,
-        resumed,
-      });
-      return { needsResponse: false };
-    } else {
-      const errData = await playRes.json().catch(() => ({}));
-      sendFunctionResult(output.call_id, {
-        status: "error",
-        message: errData.error || "Failed to play podcast episode.",
-      });
-      return { needsResponse: true };
-    }
-  } catch (error) {
-    console.error("Spotify play podcast failed:", error);
-    sendFunctionResult(output.call_id, {
-      status: "error",
-      message: "Failed to play podcast. Please try again.",
     });
     return { needsResponse: true };
   }

@@ -603,8 +603,14 @@ app.get("/spotify/search", async (req, res) => {
   }
 
   try {
+    if (type === "auto") {
+      return await handleAutoSearch(query, res);
+    }
+
+    const searchType = type === "podcast" ? "show" : type;
+    const limit = searchType === "show" ? 5 : 10;
     const data = await spotifyApiFetch(
-      `/search?q=${encodeURIComponent(query)}&type=${type}&limit=5`,
+      `/search?q=${encodeURIComponent(query)}&type=${searchType}&limit=${limit}`,
     );
 
     if (type === "track") {
@@ -612,6 +618,7 @@ app.get("/spotify/search", async (req, res) => {
       if (!track) return res.json({ found: false });
       res.json({
         found: true,
+        type: "track",
         uri: track.uri,
         name: track.name,
         artist: track.artists?.map((a) => a.name).join(", "),
@@ -619,22 +626,49 @@ app.get("/spotify/search", async (req, res) => {
         albumArt: track.album?.images?.[0]?.url,
         durationMs: track.duration_ms,
       });
+    } else if (type === "artist") {
+      const artist = data.artists?.items?.[0];
+      if (!artist) return res.json({ found: false });
+      res.json({
+        found: true,
+        type: "artist",
+        uri: artist.uri,
+        name: artist.name,
+        genres: artist.genres?.slice(0, 3),
+        popularity: artist.popularity,
+        image: artist.images?.[0]?.url,
+      });
+    } else if (type === "album") {
+      const album = data.albums?.items?.[0];
+      if (!album) return res.json({ found: false });
+      res.json({
+        found: true,
+        type: "album",
+        uri: album.uri,
+        name: album.name,
+        artist: album.artists?.map((a) => a.name).join(", "),
+        totalTracks: album.total_tracks,
+        releaseDate: album.release_date,
+        image: album.images?.[0]?.url,
+      });
     } else if (type === "playlist") {
       const playlist = data.playlists?.items?.[0];
       if (!playlist) return res.json({ found: false });
       res.json({
         found: true,
+        type: "playlist",
         uri: playlist.uri,
         name: playlist.name,
         owner: playlist.owner?.display_name,
         trackCount: playlist.tracks?.total,
         image: playlist.images?.[0]?.url,
       });
-    } else if (type === "show") {
+    } else if (type === "show" || type === "podcast") {
       const show = data.shows?.items?.[0];
       if (!show) return res.json({ found: false });
       res.json({
         found: true,
+        type: "show",
         id: show.id,
         uri: show.uri,
         name: show.name,
@@ -654,6 +688,84 @@ app.get("/spotify/search", async (req, res) => {
     res.status(500).json({ error: "Failed to search Spotify" });
   }
 });
+
+// Auto-detect best content type for a query
+async function handleAutoSearch(query, res) {
+  const data = await spotifyApiFetch(
+    `/search?q=${encodeURIComponent(query)}&type=track,artist,album,playlist&limit=3`,
+  );
+
+  const queryLower = query.toLowerCase().trim();
+
+  const candidates = [];
+
+  // Collect top result from each type
+  const artist = data.artists?.items?.[0];
+  if (artist) {
+    const nameMatch = artist.name.toLowerCase() === queryLower;
+    candidates.push({
+      type: "artist",
+      score: (artist.popularity || 0) + (nameMatch ? 200 : 0) + 10,
+      result: {
+        found: true, type: "artist", uri: artist.uri, name: artist.name,
+        genres: artist.genres?.slice(0, 3), popularity: artist.popularity,
+        image: artist.images?.[0]?.url,
+      },
+    });
+  }
+
+  const playlist = data.playlists?.items?.[0];
+  if (playlist) {
+    const nameMatch = playlist.name.toLowerCase() === queryLower;
+    candidates.push({
+      type: "playlist",
+      score: 50 + (nameMatch ? 100 : 0),
+      result: {
+        found: true, type: "playlist", uri: playlist.uri, name: playlist.name,
+        owner: playlist.owner?.display_name, trackCount: playlist.tracks?.total,
+        image: playlist.images?.[0]?.url,
+      },
+    });
+  }
+
+  const album = data.albums?.items?.[0];
+  if (album) {
+    const nameMatch = album.name.toLowerCase() === queryLower;
+    candidates.push({
+      type: "album",
+      score: 40 + (nameMatch ? 120 : 0),
+      result: {
+        found: true, type: "album", uri: album.uri, name: album.name,
+        artist: album.artists?.map((a) => a.name).join(", "),
+        totalTracks: album.total_tracks, releaseDate: album.release_date,
+        image: album.images?.[0]?.url,
+      },
+    });
+  }
+
+  const track = data.tracks?.items?.[0];
+  if (track) {
+    const nameMatch = track.name.toLowerCase() === queryLower;
+    candidates.push({
+      type: "track",
+      score: (track.popularity || 0) + (nameMatch ? 100 : 0),
+      result: {
+        found: true, type: "track", uri: track.uri, name: track.name,
+        artist: track.artists?.map((a) => a.name).join(", "),
+        album: track.album?.name, albumArt: track.album?.images?.[0]?.url,
+        durationMs: track.duration_ms,
+      },
+    });
+  }
+
+  if (candidates.length === 0) {
+    return res.json({ found: false });
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  console.log(`[Spotify Auto] Query: "${query}" → picked ${candidates[0].type} "${candidates[0].result.name}" (score: ${candidates[0].score})`);
+  res.json(candidates[0].result);
+}
 
 // List user's playlists
 app.get("/spotify/my/playlists", async (req, res) => {
