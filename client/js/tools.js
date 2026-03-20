@@ -68,6 +68,16 @@ const sessionUpdate = {
   type: "session.update",
   session: {
     type: "realtime",
+    instructions:
+      "CRITICAL RULE FOR MEDIA TOOLS: When you call ANY media or playback tool " +
+      "(play_media, play_playlist, play_my_playlist, play_liked_videos, next_track, previous_track, shuffle_playlist, " +
+      "spotify_play_track, spotify_play_playlist, spotify_play_my_playlist, spotify_play_podcast, " +
+      "spotify_next_track, spotify_previous_track, spotify_pause, spotify_shuffle), " +
+      "you MUST output ONLY the function call with NO accompanying spoken message. " +
+      "Do NOT say things like 'let me find that', 'playing now', 'I\\'ll look for that', or anything similar. " +
+      "Just silently make the tool call. After the tool result comes back, remain silent if it succeeded. " +
+      "Only speak if the tool result indicates an error or failure. " +
+      "For non-media tools (like listing playlists or displaying colors), you may respond normally.",
     tools: [
       {
         type: "function",
@@ -336,10 +346,17 @@ export const initTools = {
         functionCalls.forEach((output) => {
           console.log(`[Tool Call] ${output.name}`, output.arguments);
         });
-        // Execute all handlers, then send a single response.create
+        // Execute all handlers, then only trigger a response if needed
         Promise.allSettled(
           functionCalls.map((output) => handlers[output.name](output)),
-        ).then(() => triggerResponse());
+        ).then((results) => {
+          const anyNeedsResponse = results.some(
+            (r) => r.status === "fulfilled" && r.value?.needsResponse,
+          ) || results.some(
+            (r) => r.status === "rejected",
+          );
+          triggerResponse(!anyNeedsResponse);
+        });
       }
     }
   },
@@ -358,8 +375,16 @@ function sendFunctionResult(callId, result) {
   });
 }
 
-function triggerResponse() {
-  sendClientEvent({ type: "response.create" });
+function triggerResponse(silent = false) {
+  if (silent) {
+    // Text-only response so the model processes the tool output without speaking
+    sendClientEvent({
+      type: "response.create",
+      response: { modalities: ["text"] },
+    });
+  } else {
+    sendClientEvent({ type: "response.create" });
+  }
 }
 
 function parseArguments(output) {
@@ -393,17 +418,18 @@ async function resolveSpotifyDeviceId() {
 
 function handleColorPalette(output) {
   const args = parseArguments(output);
-  if (!args) return;
+  if (!args) return { needsResponse: true };
   sendFunctionResult(output.call_id, {
     status: "success",
     theme: args.theme,
     colors: args.colors,
   });
+  return { needsResponse: true };
 }
 
 async function handlePlayMedia(output) {
   const args = parseArguments(output);
-  if (!args) return;
+  if (!args) return { needsResponse: true };
   const { query } = args;
 
   try {
@@ -420,17 +446,20 @@ async function handlePlayMedia(output) {
           title: data.title,
           channel: data.channelTitle,
         });
+        return { needsResponse: false };
       } else {
         sendFunctionResult(output.call_id, {
           status: "error",
           message: "Unable to start YouTube playback request.",
         });
+        return { needsResponse: true };
       }
     } else {
       sendFunctionResult(output.call_id, {
         status: "not_found",
         message: `No results found for "${query}"`,
       });
+      return { needsResponse: true };
     }
   } catch (error) {
     console.error("YouTube search failed:", error);
@@ -438,12 +467,13 @@ async function handlePlayMedia(output) {
       status: "error",
       message: "Failed to search YouTube",
     });
+    return { needsResponse: true };
   }
 }
 
 async function handlePlayPlaylist(output) {
   const args = parseArguments(output);
-  if (!args) return;
+  if (!args) return { needsResponse: true };
   const { query } = args;
 
   try {
@@ -461,17 +491,20 @@ async function handlePlayPlaylist(output) {
           channel: data.channelTitle,
           type: "playlist",
         });
+        return { needsResponse: false };
       } else {
         sendFunctionResult(output.call_id, {
           status: "error",
           message: "Unable to start YouTube playlist request.",
         });
+        return { needsResponse: true };
       }
     } else {
       sendFunctionResult(output.call_id, {
         status: "not_found",
         message: `No playlist found for "${query}"`,
       });
+      return { needsResponse: true };
     }
   } catch (error) {
     console.error("YouTube playlist search failed:", error);
@@ -479,6 +512,7 @@ async function handlePlayPlaylist(output) {
       status: "error",
       message: "Failed to search YouTube playlists",
     });
+    return { needsResponse: true };
   }
 }
 
@@ -504,11 +538,12 @@ function handlePlaybackControl(output) {
       ? `${output.name} executed successfully`
       : "No media is currently playing",
   });
+  return { needsResponse: !hasMedia };
 }
 
 async function handlePlayMyPlaylist(output) {
   const args = parseArguments(output);
-  if (!args) return;
+  if (!args) return { needsResponse: true };
   const { playlist_name } = args;
   const { ytAuthenticated } = getState();
 
@@ -517,7 +552,7 @@ async function handlePlayMyPlaylist(output) {
       status: "not_authenticated",
       message: "Please sign in with YouTube first using the button in the Media Player panel.",
     });
-    return;
+    return { needsResponse: true };
   }
 
   try {
@@ -528,7 +563,7 @@ async function handlePlayMyPlaylist(output) {
         status: "not_authenticated",
         message: "YouTube session expired. Please sign in again.",
       });
-      return;
+      return { needsResponse: true };
     }
 
     const data = await response.json();
@@ -548,11 +583,13 @@ async function handlePlayMyPlaylist(output) {
           type: "playlist",
           itemCount: match.itemCount,
         });
+        return { needsResponse: false };
       } else {
         sendFunctionResult(output.call_id, {
           status: "error",
           message: "Unable to start your playlist playback request.",
         });
+        return { needsResponse: true };
       }
     } else {
       const available = (data.playlists || []).map((p) => p.title).slice(0, 10);
@@ -561,6 +598,7 @@ async function handlePlayMyPlaylist(output) {
         message: `No playlist matching "${playlist_name}" found.`,
         available_playlists: available,
       });
+      return { needsResponse: true };
     }
   } catch (error) {
     console.error("Play my playlist failed:", error);
@@ -568,6 +606,7 @@ async function handlePlayMyPlaylist(output) {
       status: "error",
       message: "Failed to fetch your playlists.",
     });
+    return { needsResponse: true };
   }
 }
 
@@ -579,7 +618,7 @@ async function handlePlayLikedVideos(output) {
       status: "not_authenticated",
       message: "Please sign in with YouTube first using the button in the Media Player panel.",
     });
-    return;
+    return { needsResponse: true };
   }
 
   try {
@@ -590,7 +629,7 @@ async function handlePlayLikedVideos(output) {
         status: "not_authenticated",
         message: "YouTube session expired. Please sign in again.",
       });
-      return;
+      return { needsResponse: true };
     }
 
     const data = await response.json();
@@ -605,17 +644,20 @@ async function handlePlayLikedVideos(output) {
           type: "playlist",
           videoCount: data.videos.length,
         });
+        return { needsResponse: false };
       } else {
         sendFunctionResult(output.call_id, {
           status: "error",
           message: "Unable to start liked videos playback request.",
         });
+        return { needsResponse: true };
       }
     } else {
       sendFunctionResult(output.call_id, {
         status: "empty",
         message: "No liked videos found.",
       });
+      return { needsResponse: true };
     }
   } catch (error) {
     console.error("Play liked videos failed:", error);
@@ -623,6 +665,7 @@ async function handlePlayLikedVideos(output) {
       status: "error",
       message: "Failed to fetch liked videos.",
     });
+    return { needsResponse: true };
   }
 }
 
@@ -634,7 +677,7 @@ async function handleListMyPlaylists(output) {
       status: "not_authenticated",
       message: "Please sign in with YouTube first using the button in the Media Player panel.",
     });
-    return;
+    return { needsResponse: true };
   }
 
   try {
@@ -645,7 +688,7 @@ async function handleListMyPlaylists(output) {
         status: "not_authenticated",
         message: "YouTube session expired. Please sign in again.",
       });
-      return;
+      return { needsResponse: true };
     }
 
     const data = await response.json();
@@ -656,12 +699,14 @@ async function handleListMyPlaylists(output) {
         itemCount: p.itemCount,
       })),
     });
+    return { needsResponse: true };
   } catch (error) {
     console.error("List playlists failed:", error);
     sendFunctionResult(output.call_id, {
       status: "error",
       message: "Failed to fetch your playlists.",
     });
+    return { needsResponse: true };
   }
 }
 
@@ -669,7 +714,7 @@ async function handleListMyPlaylists(output) {
 
 async function handleSpotifyPlayTrack(output) {
   const args = parseArguments(output);
-  if (!args) return;
+  if (!args) return { needsResponse: true };
   const { query } = args;
   const { spotifyAuthenticated } = getState();
 
@@ -678,7 +723,7 @@ async function handleSpotifyPlayTrack(output) {
       status: "not_authenticated",
       message: "Please sign in with Spotify first using the button in the Spotify panel.",
     });
-    return;
+    return { needsResponse: true };
   }
 
   try {
@@ -689,7 +734,7 @@ async function handleSpotifyPlayTrack(output) {
         status: "not_authenticated",
         message: "Spotify session expired. Please sign in again.",
       });
-      return;
+      return { needsResponse: true };
     }
 
     const data = await response.json();
@@ -710,17 +755,20 @@ async function handleSpotifyPlayTrack(output) {
           artist: data.artist,
           album: data.album,
         });
+        return { needsResponse: false };
       } else {
         sendFunctionResult(output.call_id, {
           status: "error",
           message: "Failed to start playback. Make sure Spotify Premium is active and the player is ready.",
         });
+        return { needsResponse: true };
       }
     } else {
       sendFunctionResult(output.call_id, {
         status: "not_found",
         message: `No Spotify tracks found for "${query}"`,
       });
+      return { needsResponse: true };
     }
   } catch (error) {
     console.error("Spotify play track failed:", error);
@@ -728,12 +776,13 @@ async function handleSpotifyPlayTrack(output) {
       status: "error",
       message: "Failed to search and play on Spotify.",
     });
+    return { needsResponse: true };
   }
 }
 
 async function handleSpotifyPlayPlaylist(output) {
   const args = parseArguments(output);
-  if (!args) return;
+  if (!args) return { needsResponse: true };
   const { query } = args;
   const { spotifyAuthenticated } = getState();
 
@@ -742,7 +791,7 @@ async function handleSpotifyPlayPlaylist(output) {
       status: "not_authenticated",
       message: "Please sign in with Spotify first.",
     });
-    return;
+    return { needsResponse: true };
   }
 
   try {
@@ -753,7 +802,7 @@ async function handleSpotifyPlayPlaylist(output) {
         status: "not_authenticated",
         message: "Spotify session expired. Please sign in again.",
       });
-      return;
+      return { needsResponse: true };
     }
 
     const data = await response.json();
@@ -775,17 +824,20 @@ async function handleSpotifyPlayPlaylist(output) {
           trackCount: data.trackCount,
           type: "playlist",
         });
+        return { needsResponse: false };
       } else {
         sendFunctionResult(output.call_id, {
           status: "error",
           message: "Failed to start playlist playback.",
         });
+        return { needsResponse: true };
       }
     } else {
       sendFunctionResult(output.call_id, {
         status: "not_found",
         message: `No Spotify playlist found for "${query}"`,
       });
+      return { needsResponse: true };
     }
   } catch (error) {
     console.error("Spotify play playlist failed:", error);
@@ -793,12 +845,13 @@ async function handleSpotifyPlayPlaylist(output) {
       status: "error",
       message: "Failed to search and play playlist on Spotify.",
     });
+    return { needsResponse: true };
   }
 }
 
 async function handleSpotifyPlayMyPlaylist(output) {
   const args = parseArguments(output);
-  if (!args) return;
+  if (!args) return { needsResponse: true };
   const { playlist_name } = args;
   const { spotifyAuthenticated } = getState();
 
@@ -807,7 +860,7 @@ async function handleSpotifyPlayMyPlaylist(output) {
       status: "not_authenticated",
       message: "Please sign in with Spotify first.",
     });
-    return;
+    return { needsResponse: true };
   }
 
   try {
@@ -818,7 +871,7 @@ async function handleSpotifyPlayMyPlaylist(output) {
         status: "not_authenticated",
         message: "Spotify session expired. Please sign in again.",
       });
-      return;
+      return { needsResponse: true };
     }
 
     const data = await response.json();
@@ -843,11 +896,13 @@ async function handleSpotifyPlayMyPlaylist(output) {
           type: "playlist",
           trackCount: match.trackCount,
         });
+        return { needsResponse: false };
       } else {
         sendFunctionResult(output.call_id, {
           status: "error",
           message: "Failed to start playlist playback.",
         });
+        return { needsResponse: true };
       }
     } else {
       const available = (data.playlists || []).map((p) => p.name).slice(0, 10);
@@ -856,6 +911,7 @@ async function handleSpotifyPlayMyPlaylist(output) {
         message: `No playlist matching "${playlist_name}" found.`,
         available_playlists: available,
       });
+      return { needsResponse: true };
     }
   } catch (error) {
     console.error("Spotify play my playlist failed:", error);
@@ -863,6 +919,7 @@ async function handleSpotifyPlayMyPlaylist(output) {
       status: "error",
       message: "Failed to fetch your Spotify playlists.",
     });
+    return { needsResponse: true };
   }
 }
 
@@ -874,7 +931,7 @@ async function handleSpotifyPlaybackControl(output) {
       status: "not_authenticated",
       message: "Please sign in with Spotify first.",
     });
-    return;
+    return { needsResponse: true };
   }
 
   const actions = {
@@ -923,18 +980,20 @@ async function handleSpotifyPlaybackControl(output) {
       action: output.name,
       message,
     });
+    return { needsResponse: false };
   } catch (error) {
     console.error("Spotify playback control failed:", error);
     sendFunctionResult(output.call_id, {
       status: "error",
       message: `Failed to execute ${output.name}`,
     });
+    return { needsResponse: true };
   }
 }
 
 async function handleSpotifyPlayPodcast(output) {
   const args = parseArguments(output);
-  if (!args) return;
+  if (!args) return { needsResponse: true };
   const { query, resume } = args;
   const { spotifyAuthenticated } = getState();
 
@@ -943,7 +1002,7 @@ async function handleSpotifyPlayPodcast(output) {
       status: "not_authenticated",
       message: "Please sign in with Spotify first using the button in the Spotify panel.",
     });
-    return;
+    return { needsResponse: true };
   }
 
   try {
@@ -956,7 +1015,7 @@ async function handleSpotifyPlayPodcast(output) {
         status: "not_authenticated",
         message: "Spotify session expired. Please sign in again.",
       });
-      return;
+      return { needsResponse: true };
     }
     const searchData = await searchRes.json();
     console.log(`[Podcast] Search result:`, JSON.stringify(searchData));
@@ -965,7 +1024,7 @@ async function handleSpotifyPlayPodcast(output) {
         status: "not_found",
         message: `Could not find a podcast called "${query}" on Spotify.`,
       });
-      return;
+      return { needsResponse: true };
     }
 
     const showId = searchData.id;
@@ -984,7 +1043,7 @@ async function handleSpotifyPlayPodcast(output) {
         status: "no_episodes",
         message: `The podcast "${showName}" has no available episodes.`,
       });
-      return;
+      return { needsResponse: true };
     }
 
     let targetEpisode = null;
@@ -1030,12 +1089,14 @@ async function handleSpotifyPlayPodcast(output) {
         releaseDate: targetEpisode.releaseDate,
         resumed,
       });
+      return { needsResponse: false };
     } else {
       const errData = await playRes.json().catch(() => ({}));
       sendFunctionResult(output.call_id, {
         status: "error",
         message: errData.error || "Failed to play podcast episode.",
       });
+      return { needsResponse: true };
     }
   } catch (error) {
     console.error("Spotify play podcast failed:", error);
@@ -1043,5 +1104,6 @@ async function handleSpotifyPlayPodcast(output) {
       status: "error",
       message: "Failed to play podcast. Please try again.",
     });
+    return { needsResponse: true };
   }
 }
