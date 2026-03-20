@@ -56,6 +56,12 @@ const spotifyPreviousDescription = `Go back to the previous track on Spotify.`;
 const spotifyPauseDescription = `Pause or resume Spotify playback.`;
 const spotifyShuffleDescription = `Toggle shuffle mode on Spotify.`;
 
+const spotifyPlayPodcastDescription = `
+Call this function when a user asks to play a podcast on Spotify, or resume a podcast they were previously listening to.
+Extract only the podcast name from their request — do not add extra words like "The" or "podcast" to the query. For example, if the user says "play the Cheeky Pint podcast", set query to "Cheeky Pint".
+Set resume to true if the user wants to continue where they left off.
+`;
+
 // ── Session update payload ──
 
 const sessionUpdate = {
@@ -70,6 +76,7 @@ const sessionUpdate = {
         parameters: {
           type: "object",
           strict: true,
+          additionalProperties: false,
           properties: {
             theme: {
               type: "string",
@@ -91,6 +98,7 @@ const sessionUpdate = {
         parameters: {
           type: "object",
           strict: true,
+          additionalProperties: false,
           properties: {
             query: {
               type: "string",
@@ -107,6 +115,7 @@ const sessionUpdate = {
         parameters: {
           type: "object",
           strict: true,
+          additionalProperties: false,
           properties: {
             query: {
               type: "string",
@@ -120,19 +129,19 @@ const sessionUpdate = {
         type: "function",
         name: "next_track",
         description: "Skip to the next track in the current playlist.",
-        parameters: { type: "object", strict: true, properties: {} },
+        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
       },
       {
         type: "function",
         name: "previous_track",
         description: "Go back to the previous track in the current playlist.",
-        parameters: { type: "object", strict: true, properties: {} },
+        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
       },
       {
         type: "function",
         name: "shuffle_playlist",
         description: "Shuffle the current playlist so tracks play in random order.",
-        parameters: { type: "object", strict: true, properties: {} },
+        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
       },
       {
         type: "function",
@@ -141,6 +150,7 @@ const sessionUpdate = {
         parameters: {
           type: "object",
           strict: true,
+          additionalProperties: false,
           properties: {
             playlist_name: {
               type: "string",
@@ -154,13 +164,13 @@ const sessionUpdate = {
         type: "function",
         name: "play_liked_videos",
         description: playLikedVideosDescription,
-        parameters: { type: "object", strict: true, properties: {} },
+        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
       },
       {
         type: "function",
         name: "list_my_playlists",
         description: listMyPlaylistsDescription,
-        parameters: { type: "object", strict: true, properties: {} },
+        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
       },
       {
         type: "function",
@@ -169,6 +179,7 @@ const sessionUpdate = {
         parameters: {
           type: "object",
           strict: true,
+          additionalProperties: false,
           properties: {
             query: {
               type: "string",
@@ -185,6 +196,7 @@ const sessionUpdate = {
         parameters: {
           type: "object",
           strict: true,
+          additionalProperties: false,
           properties: {
             query: {
               type: "string",
@@ -201,6 +213,7 @@ const sessionUpdate = {
         parameters: {
           type: "object",
           strict: true,
+          additionalProperties: false,
           properties: {
             playlist_name: {
               type: "string",
@@ -214,25 +227,47 @@ const sessionUpdate = {
         type: "function",
         name: "spotify_next_track",
         description: spotifyNextDescription,
-        parameters: { type: "object", strict: true, properties: {} },
+        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
       },
       {
         type: "function",
         name: "spotify_previous_track",
         description: spotifyPreviousDescription,
-        parameters: { type: "object", strict: true, properties: {} },
+        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
       },
       {
         type: "function",
         name: "spotify_pause",
         description: spotifyPauseDescription,
-        parameters: { type: "object", strict: true, properties: {} },
+        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
       },
       {
         type: "function",
         name: "spotify_shuffle",
         description: spotifyShuffleDescription,
-        parameters: { type: "object", strict: true, properties: {} },
+        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
+      },
+      {
+        type: "function",
+        name: "spotify_play_podcast",
+        description: spotifyPlayPodcastDescription,
+        parameters: {
+          type: "object",
+          strict: true,
+          additionalProperties: false,
+          properties: {
+            query: {
+              type: "string",
+              description: "Name of the podcast show to search for.",
+            },
+            resume: {
+              type: "boolean",
+              description:
+                "If true, resumes the most recently started but unfinished episode. If false, plays the latest episode from the beginning.",
+            },
+          },
+          required: ["query", "resume"],
+        },
       },
     ],
     tool_choice: "auto",
@@ -258,32 +293,54 @@ export const initTools = {
       functionAdded = true;
     }
 
+    // Log user speech transcription
+    if (event.type === "conversation.item.input_audio_transcription.completed") {
+      console.log(`[User Speech] ${event.transcript}`);
+    }
+
     if (event.type === "response.done" && event.response?.output) {
+      // Log any audio transcript from the model's response
       event.response.output.forEach((output) => {
-        if (output.type !== "function_call") return;
-
-        const handlers = {
-          display_color_palette: handleColorPalette,
-          play_media: handlePlayMedia,
-          play_playlist: handlePlayPlaylist,
-          next_track: handlePlaybackControl,
-          previous_track: handlePlaybackControl,
-          shuffle_playlist: handlePlaybackControl,
-          play_my_playlist: handlePlayMyPlaylist,
-          play_liked_videos: handlePlayLikedVideos,
-          list_my_playlists: handleListMyPlaylists,
-          spotify_play_track: handleSpotifyPlayTrack,
-          spotify_play_playlist: handleSpotifyPlayPlaylist,
-          spotify_play_my_playlist: handleSpotifyPlayMyPlaylist,
-          spotify_next_track: handleSpotifyPlaybackControl,
-          spotify_previous_track: handleSpotifyPlaybackControl,
-          spotify_pause: handleSpotifyPlaybackControl,
-          spotify_shuffle: handleSpotifyPlaybackControl,
-        };
-
-        const handler = handlers[output.name];
-        if (handler) handler(output);
+        if (output.type === "message" && output.content) {
+          output.content.forEach((c) => {
+            if (c.transcript) console.log(`[Agent Response] ${c.transcript}`);
+          });
+        }
       });
+
+      const handlers = {
+        display_color_palette: handleColorPalette,
+        play_media: handlePlayMedia,
+        play_playlist: handlePlayPlaylist,
+        next_track: handlePlaybackControl,
+        previous_track: handlePlaybackControl,
+        shuffle_playlist: handlePlaybackControl,
+        play_my_playlist: handlePlayMyPlaylist,
+        play_liked_videos: handlePlayLikedVideos,
+        list_my_playlists: handleListMyPlaylists,
+        spotify_play_track: handleSpotifyPlayTrack,
+        spotify_play_playlist: handleSpotifyPlayPlaylist,
+        spotify_play_my_playlist: handleSpotifyPlayMyPlaylist,
+        spotify_next_track: handleSpotifyPlaybackControl,
+        spotify_previous_track: handleSpotifyPlaybackControl,
+        spotify_pause: handleSpotifyPlaybackControl,
+        spotify_shuffle: handleSpotifyPlaybackControl,
+        spotify_play_podcast: handleSpotifyPlayPodcast,
+      };
+
+      const functionCalls = event.response.output.filter(
+        (output) => output.type === "function_call" && handlers[output.name],
+      );
+
+      if (functionCalls.length > 0) {
+        functionCalls.forEach((output) => {
+          console.log(`[Tool Call] ${output.name}`, output.arguments);
+        });
+        // Execute all handlers, then send a single response.create
+        Promise.allSettled(
+          functionCalls.map((output) => handlers[output.name](output)),
+        ).then(() => triggerResponse());
+      }
     }
   },
 };
@@ -302,9 +359,20 @@ function sendFunctionResult(callId, result) {
 }
 
 function triggerResponse() {
-  setTimeout(() => {
-    sendClientEvent({ type: "response.create" });
-  }, 500);
+  sendClientEvent({ type: "response.create" });
+}
+
+function parseArguments(output) {
+  try {
+    return JSON.parse(output.arguments);
+  } catch (error) {
+    console.error("Failed to parse function arguments:", error);
+    sendFunctionResult(output.call_id, {
+      status: "error",
+      message: "Invalid function arguments received.",
+    });
+    return null;
+  }
 }
 
 async function resolveSpotifyDeviceId() {
@@ -323,12 +391,20 @@ async function resolveSpotifyDeviceId() {
 
 // ── Handler functions ──
 
-function handleColorPalette(_output) {
-  triggerResponse();
+function handleColorPalette(output) {
+  const args = parseArguments(output);
+  if (!args) return;
+  sendFunctionResult(output.call_id, {
+    status: "success",
+    theme: args.theme,
+    colors: args.colors,
+  });
 }
 
 async function handlePlayMedia(output) {
-  const { query } = JSON.parse(output.arguments);
+  const args = parseArguments(output);
+  if (!args) return;
+  const { query } = args;
 
   try {
     const response = await fetch(`/youtube/search?q=${encodeURIComponent(query)}`);
@@ -356,20 +432,19 @@ async function handlePlayMedia(output) {
         message: `No results found for "${query}"`,
       });
     }
-
-    triggerResponse();
   } catch (error) {
     console.error("YouTube search failed:", error);
     sendFunctionResult(output.call_id, {
       status: "error",
       message: "Failed to search YouTube",
     });
-    triggerResponse();
   }
 }
 
 async function handlePlayPlaylist(output) {
-  const { query } = JSON.parse(output.arguments);
+  const args = parseArguments(output);
+  if (!args) return;
+  const { query } = args;
 
   try {
     const response = await fetch(`/youtube/playlists/search?q=${encodeURIComponent(query)}`);
@@ -398,15 +473,12 @@ async function handlePlayPlaylist(output) {
         message: `No playlist found for "${query}"`,
       });
     }
-
-    triggerResponse();
   } catch (error) {
     console.error("YouTube playlist search failed:", error);
     sendFunctionResult(output.call_id, {
       status: "error",
       message: "Failed to search YouTube playlists",
     });
-    triggerResponse();
   }
 }
 
@@ -432,12 +504,12 @@ function handlePlaybackControl(output) {
       ? `${output.name} executed successfully`
       : "No media is currently playing",
   });
-
-  triggerResponse();
 }
 
 async function handlePlayMyPlaylist(output) {
-  const { playlist_name } = JSON.parse(output.arguments);
+  const args = parseArguments(output);
+  if (!args) return;
+  const { playlist_name } = args;
   const { ytAuthenticated } = getState();
 
   if (!ytAuthenticated) {
@@ -497,8 +569,6 @@ async function handlePlayMyPlaylist(output) {
       message: "Failed to fetch your playlists.",
     });
   }
-
-  triggerResponse();
 }
 
 async function handlePlayLikedVideos(output) {
@@ -509,7 +579,6 @@ async function handlePlayLikedVideos(output) {
       status: "not_authenticated",
       message: "Please sign in with YouTube first using the button in the Media Player panel.",
     });
-    triggerResponse();
     return;
   }
 
@@ -521,7 +590,6 @@ async function handlePlayLikedVideos(output) {
         status: "not_authenticated",
         message: "YouTube session expired. Please sign in again.",
       });
-      triggerResponse();
       return;
     }
 
@@ -556,8 +624,6 @@ async function handlePlayLikedVideos(output) {
       message: "Failed to fetch liked videos.",
     });
   }
-
-  triggerResponse();
 }
 
 async function handleListMyPlaylists(output) {
@@ -568,7 +634,6 @@ async function handleListMyPlaylists(output) {
       status: "not_authenticated",
       message: "Please sign in with YouTube first using the button in the Media Player panel.",
     });
-    triggerResponse();
     return;
   }
 
@@ -580,7 +645,6 @@ async function handleListMyPlaylists(output) {
         status: "not_authenticated",
         message: "YouTube session expired. Please sign in again.",
       });
-      triggerResponse();
       return;
     }
 
@@ -599,14 +663,14 @@ async function handleListMyPlaylists(output) {
       message: "Failed to fetch your playlists.",
     });
   }
-
-  triggerResponse();
 }
 
 // ── Spotify handlers ──
 
 async function handleSpotifyPlayTrack(output) {
-  const { query } = JSON.parse(output.arguments);
+  const args = parseArguments(output);
+  if (!args) return;
+  const { query } = args;
   const { spotifyAuthenticated } = getState();
 
   if (!spotifyAuthenticated) {
@@ -614,7 +678,6 @@ async function handleSpotifyPlayTrack(output) {
       status: "not_authenticated",
       message: "Please sign in with Spotify first using the button in the Spotify panel.",
     });
-    triggerResponse();
     return;
   }
 
@@ -626,7 +689,6 @@ async function handleSpotifyPlayTrack(output) {
         status: "not_authenticated",
         message: "Spotify session expired. Please sign in again.",
       });
-      triggerResponse();
       return;
     }
 
@@ -660,20 +722,19 @@ async function handleSpotifyPlayTrack(output) {
         message: `No Spotify tracks found for "${query}"`,
       });
     }
-
-    triggerResponse();
   } catch (error) {
     console.error("Spotify play track failed:", error);
     sendFunctionResult(output.call_id, {
       status: "error",
       message: "Failed to search and play on Spotify.",
     });
-    triggerResponse();
   }
 }
 
 async function handleSpotifyPlayPlaylist(output) {
-  const { query } = JSON.parse(output.arguments);
+  const args = parseArguments(output);
+  if (!args) return;
+  const { query } = args;
   const { spotifyAuthenticated } = getState();
 
   if (!spotifyAuthenticated) {
@@ -681,7 +742,6 @@ async function handleSpotifyPlayPlaylist(output) {
       status: "not_authenticated",
       message: "Please sign in with Spotify first.",
     });
-    triggerResponse();
     return;
   }
 
@@ -693,7 +753,6 @@ async function handleSpotifyPlayPlaylist(output) {
         status: "not_authenticated",
         message: "Spotify session expired. Please sign in again.",
       });
-      triggerResponse();
       return;
     }
 
@@ -728,20 +787,19 @@ async function handleSpotifyPlayPlaylist(output) {
         message: `No Spotify playlist found for "${query}"`,
       });
     }
-
-    triggerResponse();
   } catch (error) {
     console.error("Spotify play playlist failed:", error);
     sendFunctionResult(output.call_id, {
       status: "error",
       message: "Failed to search and play playlist on Spotify.",
     });
-    triggerResponse();
   }
 }
 
 async function handleSpotifyPlayMyPlaylist(output) {
-  const { playlist_name } = JSON.parse(output.arguments);
+  const args = parseArguments(output);
+  if (!args) return;
+  const { playlist_name } = args;
   const { spotifyAuthenticated } = getState();
 
   if (!spotifyAuthenticated) {
@@ -749,7 +807,6 @@ async function handleSpotifyPlayMyPlaylist(output) {
       status: "not_authenticated",
       message: "Please sign in with Spotify first.",
     });
-    triggerResponse();
     return;
   }
 
@@ -761,7 +818,6 @@ async function handleSpotifyPlayMyPlaylist(output) {
         status: "not_authenticated",
         message: "Spotify session expired. Please sign in again.",
       });
-      triggerResponse();
       return;
     }
 
@@ -808,8 +864,6 @@ async function handleSpotifyPlayMyPlaylist(output) {
       message: "Failed to fetch your Spotify playlists.",
     });
   }
-
-  triggerResponse();
 }
 
 async function handleSpotifyPlaybackControl(output) {
@@ -820,7 +874,6 @@ async function handleSpotifyPlaybackControl(output) {
       status: "not_authenticated",
       message: "Please sign in with Spotify first.",
     });
-    triggerResponse();
     return;
   }
 
@@ -877,6 +930,118 @@ async function handleSpotifyPlaybackControl(output) {
       message: `Failed to execute ${output.name}`,
     });
   }
+}
 
-  triggerResponse();
+async function handleSpotifyPlayPodcast(output) {
+  const args = parseArguments(output);
+  if (!args) return;
+  const { query, resume } = args;
+  const { spotifyAuthenticated } = getState();
+
+  if (!spotifyAuthenticated) {
+    sendFunctionResult(output.call_id, {
+      status: "not_authenticated",
+      message: "Please sign in with Spotify first using the button in the Spotify panel.",
+    });
+    return;
+  }
+
+  try {
+    // Search for the podcast show
+    console.log(`[Podcast] Searching for show: "${query}" (resume=${resume})`);
+    const searchRes = await fetch(`/spotify/search?q=${encodeURIComponent(query)}&type=show`);
+    if (searchRes.status === 401) {
+      setSpotifyAuthenticated(false);
+      sendFunctionResult(output.call_id, {
+        status: "not_authenticated",
+        message: "Spotify session expired. Please sign in again.",
+      });
+      return;
+    }
+    const searchData = await searchRes.json();
+    console.log(`[Podcast] Search result:`, JSON.stringify(searchData));
+    if (!searchData.found) {
+      sendFunctionResult(output.call_id, {
+        status: "not_found",
+        message: `Could not find a podcast called "${query}" on Spotify.`,
+      });
+      return;
+    }
+
+    const showId = searchData.id;
+    const showName = searchData.name;
+    console.log(`[Podcast] Found show: "${showName}" (id=${showId})`);
+
+    // Fetch episodes (more if resuming to find an in-progress one)
+    const episodeLimit = resume ? 10 : 1;
+    const epRes = await fetch(`/spotify/shows/${showId}/episodes?limit=${episodeLimit}`);
+    const epData = await epRes.json();
+    const episodes = epData.episodes || [];
+    console.log(`[Podcast] Got ${episodes.length} episodes:`, episodes.map(e => e.name));
+
+    if (episodes.length === 0) {
+      sendFunctionResult(output.call_id, {
+        status: "no_episodes",
+        message: `The podcast "${showName}" has no available episodes.`,
+      });
+      return;
+    }
+
+    let targetEpisode = null;
+    let resumed = false;
+
+    if (resume) {
+      // Find the most recent episode that has been started but not finished
+      targetEpisode = episodes.find(
+        (ep) =>
+          ep.resumePoint &&
+          !ep.resumePoint.fully_played &&
+          ep.resumePoint.resume_position_ms > 0,
+      );
+      if (targetEpisode) {
+        resumed = true;
+      } else {
+        // No in-progress episode found — fall back to the latest
+        targetEpisode = episodes[0];
+      }
+    } else {
+      targetEpisode = episodes[0];
+    }
+
+    // Play the episode — Spotify natively resumes podcast position
+    const deviceId = await resolveSpotifyDeviceId();
+    const playBody = {
+      uris: [targetEpisode.uri],
+      device_id: deviceId,
+    };
+
+    const playRes = await fetch("/spotify/play", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(playBody),
+    });
+
+    if (playRes.ok) {
+      onSpotifyPlay();
+      sendFunctionResult(output.call_id, {
+        status: "playing",
+        show: showName,
+        episode: targetEpisode.name,
+        releaseDate: targetEpisode.releaseDate,
+        resumed,
+      });
+    } else {
+      const errData = await playRes.json().catch(() => ({}));
+      sendFunctionResult(output.call_id, {
+        status: "error",
+        message: errData.error || "Failed to play podcast episode.",
+      });
+    }
+  } catch (error) {
+    console.error("Spotify play podcast failed:", error);
+    sendFunctionResult(output.call_id, {
+      status: "error",
+      message: "Failed to play podcast. Please try again.",
+    });
+  }
 }

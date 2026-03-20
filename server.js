@@ -422,6 +422,7 @@ const SPOTIFY_SCOPES = [
   "user-read-currently-playing",
   "playlist-read-private",
   "playlist-read-collaborative",
+  "user-read-playback-position",
 ].join(" ");
 const SPOTIFY_TOKEN_PATH = "spotify-tokens.json";
 
@@ -629,6 +630,18 @@ app.get("/spotify/search", async (req, res) => {
         trackCount: playlist.tracks?.total,
         image: playlist.images?.[0]?.url,
       });
+    } else if (type === "show") {
+      const show = data.shows?.items?.[0];
+      if (!show) return res.json({ found: false });
+      res.json({
+        found: true,
+        id: show.id,
+        uri: show.uri,
+        name: show.name,
+        publisher: show.publisher,
+        totalEpisodes: show.total_episodes,
+        image: show.images?.[0]?.url,
+      });
     } else {
       res.json(data);
     }
@@ -788,6 +801,37 @@ app.put("/spotify/shuffle", express.json(), async (req, res) => {
     }
     console.error("Spotify shuffle error:", error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Get episodes for a podcast show
+app.get("/spotify/shows/:id/episodes", async (req, res) => {
+  if (!isSpotifyAuthenticated) {
+    return res.status(401).json({ error: "Not authenticated with Spotify" });
+  }
+
+  const { id } = req.params;
+  const limit = req.query.limit || 10;
+
+  try {
+    const data = await spotifyApiFetch(`/shows/${id}/episodes?limit=${limit}`);
+    const episodes = (data.items || []).map((ep) => ({
+      id: ep.id,
+      uri: ep.uri,
+      name: ep.name,
+      description: ep.description?.substring(0, 200),
+      releaseDate: ep.release_date,
+      durationMs: ep.duration_ms,
+      resumePoint: ep.resume_point || null,
+    }));
+    res.json({ episodes });
+  } catch (error) {
+    console.error("Spotify show episodes error:", error.message);
+    if (error.status === 401) {
+      isSpotifyAuthenticated = false;
+      return res.status(401).json({ error: "Token expired. Please re-authenticate." });
+    }
+    res.status(500).json({ error: "Failed to fetch show episodes" });
   }
 });
 
