@@ -61,8 +61,7 @@ const sessionUpdate = {
     type: "realtime",
     instructions:
       "CRITICAL RULE FOR MEDIA TOOLS: When you call ANY media or playback tool " +
-      "(play_media, play_playlist, play_my_playlist, play_liked_videos, next_track, previous_track, shuffle_playlist, " +
-      "spotify_play, spotify_play_my_playlist, " +
+      "(spotify_play, spotify_play_my_playlist, " +
       "spotify_next_track, spotify_previous_track, spotify_pause, spotify_shuffle), " +
       "you MUST output ONLY the function call with NO accompanying spoken message. " +
       "Do NOT say things like 'let me find that', 'playing now', 'I\\'ll look for that', or anything similar. " +
@@ -91,87 +90,6 @@ const sessionUpdate = {
           },
           required: ["theme", "colors"],
         },
-      },
-      {
-        type: "function",
-        name: "play_media",
-        description: playMediaDescription,
-        parameters: {
-          type: "object",
-          strict: true,
-          additionalProperties: false,
-          properties: {
-            query: {
-              type: "string",
-              description: "Search query for the song or video. Include artist name if mentioned.",
-            },
-          },
-          required: ["query"],
-        },
-      },
-      {
-        type: "function",
-        name: "play_playlist",
-        description: playPlaylistDescription,
-        parameters: {
-          type: "object",
-          strict: true,
-          additionalProperties: false,
-          properties: {
-            query: {
-              type: "string",
-              description: "Name or description of the playlist to search for.",
-            },
-          },
-          required: ["query"],
-        },
-      },
-      {
-        type: "function",
-        name: "next_track",
-        description: "Skip to the next track in the current playlist.",
-        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
-      },
-      {
-        type: "function",
-        name: "previous_track",
-        description: "Go back to the previous track in the current playlist.",
-        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
-      },
-      {
-        type: "function",
-        name: "shuffle_playlist",
-        description: "Shuffle the current playlist so tracks play in random order.",
-        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
-      },
-      {
-        type: "function",
-        name: "play_my_playlist",
-        description: playMyPlaylistDescription,
-        parameters: {
-          type: "object",
-          strict: true,
-          additionalProperties: false,
-          properties: {
-            playlist_name: {
-              type: "string",
-              description: "Name or partial name of the user's personal playlist to play.",
-            },
-          },
-          required: ["playlist_name"],
-        },
-      },
-      {
-        type: "function",
-        name: "play_liked_videos",
-        description: playLikedVideosDescription,
-        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
-      },
-      {
-        type: "function",
-        name: "list_my_playlists",
-        description: listMyPlaylistsDescription,
-        parameters: { type: "object", strict: true, additionalProperties: false, properties: {} },
       },
       {
         type: "function",
@@ -283,14 +201,6 @@ export const initTools = {
 
       const handlers = {
         display_color_palette: handleColorPalette,
-        play_media: handlePlayMedia,
-        play_playlist: handlePlayPlaylist,
-        next_track: handlePlaybackControl,
-        previous_track: handlePlaybackControl,
-        shuffle_playlist: handlePlaybackControl,
-        play_my_playlist: handlePlayMyPlaylist,
-        play_liked_videos: handlePlayLikedVideos,
-        list_my_playlists: handleListMyPlaylists,
         spotify_play: handleSpotifyPlay,
         spotify_play_my_playlist: handleSpotifyPlayMyPlaylist,
         spotify_next_track: handleSpotifyPlaybackControl,

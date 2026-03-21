@@ -1,5 +1,26 @@
 # Future Developments
 
+## YouTube Integration (Deferred)
+
+**Status:** All YouTube code is implemented and remains in the codebase but is currently disabled. The AI model does not have YouTube tools registered, so it cannot invoke YouTube functionality.
+
+### What's in place
+
+- **Server endpoints (`server.js`):** YouTube search proxy, Google OAuth2 flow, user playlists, liked videos, playlist items — all routes are live but unused.
+- **Tool handler functions (`client/js/tools.js`):** `handlePlayMedia`, `handlePlayPlaylist`, `handlePlayMyPlaylist`, `handlePlayLikedVideos`, `handleListMyPlaylists`, `handlePlaybackControl` — all remain in the file.
+- **YouTube IFrame player (`client/js/media-players.js`):** Full player wrapper with load, play, pause, next, prev, shuffle, destroy — intact.
+- **Session integration (`client/js/session.js`):** YouTube player pause-on-talk, destroy-on-stop, auth state management — intact.
+- **UI (`client/index.html`):** YouTube player container HTML and playlist controls — still in the DOM (hidden by default).
+
+### How to re-enable
+
+1. Restore the YouTube tool definitions to the `sessionUpdate.session.tools` array in `client/js/tools.js`
+2. Restore the YouTube entries in the `handlers` map in `client/js/tools.js`
+3. Add YouTube tool names back to the `instructions` string
+4. Restore the YouTube auth button in `client/index.html`
+
+---
+
 ## Spotify Playlist Bookmarks (Voice-Based)
 
 **Problem:** Spotify's personalized/algorithmic playlists (Daylist, Daily Mix, Discover Weekly, etc.) cannot be found via the Spotify Web API Search or Browse endpoints. They *can* be played by URI, but only if you already know it. The Daylist appears in `/me/playlists` once followed, but its name changes constantly (e.g., "chill study power ballad friday afternoon") with no distinguishing metadata.
