@@ -136,7 +136,12 @@ export async function startSession() {
 }
 
 export function startTalking() {
-  if (isTalking) return;
+  sendClientEvent({ type: "response.cancel" });
+  sendClientEvent({ type: "output_audio_buffer.clear" });
+  if (isTalking) {
+    stopTalking();
+    return;
+  }
   youtubePlayer.pause();
   spotifyPlayer.pause();
   if (micTrack) micTrack.enabled = true;

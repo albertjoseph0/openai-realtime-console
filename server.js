@@ -1012,11 +1012,8 @@ app.use("*", async (req, res, next) => {
   const url = req.originalUrl;
 
   try {
-    const template = await vite.transformIndexHtml(
-      url,
-      fs.readFileSync("./client/index.html", "utf-8"),
-    );
-    res.status(200).set({ "Content-Type": "text/html" }).end(template);
+    const html = fs.readFileSync("./client/index.html", "utf-8");
+    res.status(200).set({ "Content-Type": "text/html" }).end(html);
   } catch (e) {
     next(e);
   }
