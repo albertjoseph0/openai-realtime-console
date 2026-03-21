@@ -665,11 +665,11 @@ async function handleSpotifyPlay(output) {
   }
 }
 
-// Podcast-specific flow: search show → fetch episodes → handle resume
+// Podcast-specific flow: search for episode directly by query
 async function handleSpotifyPodcastFlow(callId, query, resume) {
   try {
-    console.log(`[Podcast] Searching for show: "${query}" (resume=${resume})`);
-    const searchRes = await fetch(`/spotify/search?q=${encodeURIComponent(query)}&type=show`);
+    console.log(`[Podcast] Searching for episode: "${query}" (resume=${resume})`);
+    const searchRes = await fetch(`/spotify/search?q=${encodeURIComponent(query)}&type=episode`);
     if (searchRes.status === 401) {
       setSpotifyAuthenticated(false);
       sendFunctionResult(callId, {
@@ -683,62 +683,34 @@ async function handleSpotifyPodcastFlow(callId, query, resume) {
     if (!searchData.found) {
       sendFunctionResult(callId, {
         status: "not_found",
-        message: `Could not find a podcast called "${query}" on Spotify.`,
+        message: `Could not find a podcast episode matching "${query}" on Spotify.`,
       });
       return { needsResponse: true };
     }
 
-    const showId = searchData.id;
-    const showName = searchData.name;
-    console.log(`[Podcast] Found show: "${showName}" (id=${showId})`);
+    const episode = searchData;
+    console.log(`[Podcast] Found episode: "${episode.name}" from "${episode.show}"`);
 
-    const episodeLimit = resume ? 10 : 1;
-    const epRes = await fetch(`/spotify/shows/${showId}/episodes?limit=${episodeLimit}`);
-    const epData = await epRes.json();
-    const episodes = epData.episodes || [];
-    console.log(`[Podcast] Got ${episodes.length} episodes:`, episodes.map(e => e.name));
-
-    if (episodes.length === 0) {
-      sendFunctionResult(callId, {
-        status: "no_episodes",
-        message: `The podcast "${showName}" has no available episodes.`,
-      });
-      return { needsResponse: true };
-    }
-
-    let targetEpisode = null;
+    // Check resume point if user wants to resume
     let resumed = false;
-
-    if (resume) {
-      targetEpisode = episodes.find(
-        (ep) =>
-          ep.resumePoint &&
-          !ep.resumePoint.fully_played &&
-          ep.resumePoint.resume_position_ms > 0,
-      );
-      if (targetEpisode) {
-        resumed = true;
-      } else {
-        targetEpisode = episodes[0];
-      }
-    } else {
-      targetEpisode = episodes[0];
+    if (resume && episode.resumePoint && !episode.resumePoint.fully_played && episode.resumePoint.resume_position_ms > 0) {
+      resumed = true;
     }
 
     const deviceId = await resolveSpotifyDeviceId();
     const playRes = await fetch("/spotify/play", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uris: [targetEpisode.uri], device_id: deviceId }),
+      body: JSON.stringify({ uris: [episode.uri], device_id: deviceId }),
     });
 
     if (playRes.ok) {
       onSpotifyPlay();
       sendFunctionResult(callId, {
         status: "playing",
-        show: showName,
-        episode: targetEpisode.name,
-        releaseDate: targetEpisode.releaseDate,
+        show: episode.show,
+        episode: episode.name,
+        releaseDate: episode.releaseDate,
         resumed,
       });
       return { needsResponse: false };

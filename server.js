@@ -676,6 +676,23 @@ app.get("/spotify/search", async (req, res) => {
         totalEpisodes: show.total_episodes,
         image: show.images?.[0]?.url,
       });
+    } else if (type === "episode") {
+      const episode = data.episodes?.items?.[0];
+      if (!episode) return res.json({ found: false });
+      res.json({
+        found: true,
+        type: "episode",
+        id: episode.id,
+        uri: episode.uri,
+        name: episode.name,
+        show: episode.show?.name,
+        showId: episode.show?.id,
+        description: episode.description,
+        releaseDate: episode.release_date,
+        durationMs: episode.duration_ms,
+        resumePoint: episode.resume_point,
+        image: episode.images?.[0]?.url,
+      });
     } else {
       res.json(data);
     }
