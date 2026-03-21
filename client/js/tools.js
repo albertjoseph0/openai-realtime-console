@@ -214,6 +214,11 @@ export const initTools = {
       );
 
       if (functionCalls.length > 0) {
+        // Cancel any in-progress audio to prevent the agent from speaking
+        // alongside a tool call (e.g. "Sure, let me play that!")
+        sendClientEvent({ type: "response.cancel" });
+        sendClientEvent({ type: "output_audio_buffer.clear" });
+
         functionCalls.forEach((output) => {
           console.log(`[Tool Call] ${output.name}`, output.arguments);
         });
