@@ -28,3 +28,4 @@ spotify-tokens.json
 
 # vite temp files
 vite.config.js.timestamp-*
+test-results/
